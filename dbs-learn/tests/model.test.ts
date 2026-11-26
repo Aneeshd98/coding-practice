@@ -290,3 +290,19 @@ test('segments facing the beta generator carry the most directional beta', async
   const { segLane } = await import('../src/sim/model')
   assert.ok(Math.abs(store.at(s, 1) - mean((g) => segLane('L', 1, g))) < 1e-4)
 })
+
+test('the spectrogram shows a rhythm where and when it occurs, relative to each frequency’s median', async () => {
+  const { spectrogram } = await import('../src/dsp/spectrogram')
+  // 8 s of noise, with a 20 Hz rhythm only in the second half.
+  let seed = 3
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 2
+  const x = Float64Array.from({ length: 8 * FS }, (_, i) => rand() + (i >= 4 * FS ? 3 * Math.sin((2 * Math.PI * 20 * i) / FS) : 0))
+  const s = spectrogram(x)
+  const k20 = s.freqs.findIndex((f) => Math.abs(f - 20) < 0.6),
+    k40 = s.freqs.findIndex((f) => Math.abs(f - 40) < 0.6)
+  const early = s.columns.filter((_, t) => s.centres[t] < 3.5 * FS),
+    late = s.columns.filter((_, t) => s.centres[t] > 4.6 * FS)
+  const avg = (cols: Float32Array[], k: number) => cols.reduce((a, c) => a + c[k], 0) / cols.length
+  assert.ok(avg(late, k20) - avg(early, k20) > 15, '20 Hz rises by more than 15 dB once the rhythm starts')
+  assert.ok(Math.abs(avg(late, k40) - avg(early, k40)) < 3, '40 Hz stays flat')
+})

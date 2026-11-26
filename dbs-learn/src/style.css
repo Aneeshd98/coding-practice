@@ -1999,3 +1999,179 @@ select:disabled {
   opacity: 0.55;
   cursor: not-allowed;
 }
+
+/* Spectrogram strip under the traces */
+.spectro {
+  border-top: 1px solid var(--line-2);
+  padding: 8px 0 8px;
+}
+.spectro.closed {
+  padding: 4px 0;
+}
+.spectro-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 0 14px 0 12px;
+}
+.spectro-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  padding: 4px 6px;
+  border-radius: 7px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.spectro-toggle:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.spectro-scale {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.spectro-scale i {
+  width: 64px;
+  height: 8px;
+  border-radius: 3px;
+  outline: 1px solid var(--line);
+}
+.spectro-scale small {
+  font-size: 10.5px;
+}
+.spectro-plot {
+  position: relative;
+  margin: 6px 14px 0 78px;
+}
+.spectro-y {
+  position: absolute;
+  left: -78px;
+  width: 70px;
+  top: 0;
+  height: 92px;
+}
+.spectro-y span {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.spectro-area {
+  position: relative;
+  height: 92px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  outline: 1px solid var(--line-2);
+  cursor: crosshair;
+}
+.spectro-area canvas {
+  position: absolute;
+  top: 0;
+  height: 100%;
+}
+.spectro-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.spectro-beta {
+  stroke: var(--beta);
+  stroke-dasharray: 3 3;
+  stroke-opacity: 0.75;
+}
+.spectro-event {
+  stroke: var(--ink);
+  stroke-opacity: 0.55;
+}
+.spectro-band {
+  position: absolute;
+  right: 4px;
+  transform: translateY(-110%);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--beta);
+  pointer-events: none;
+}
+.spectro-label {
+  position: absolute;
+  top: 3px;
+  transform: translateX(4px);
+  max-width: 34%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-2);
+  pointer-events: none;
+}
+.spectro-tip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 10px));
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--surface);
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}
+.spectro-wait {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+.spectro-x {
+  position: relative;
+  height: 18px;
+}
+.spectro-x span {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.spectro-x span:first-child {
+  transform: none;
+}
+.spectro-x span:last-child {
+  transform: translateX(-100%);
+}
+@media (max-width: 720px) {
+  .spectro-plot {
+    margin-left: 52px;
+  }
+  .spectro-y {
+    left: -52px;
+    width: 46px;
+  }
+  .spectro-scale small {
+    display: none;
+  }
+}

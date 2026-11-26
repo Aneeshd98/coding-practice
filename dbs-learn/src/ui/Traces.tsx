@@ -3,6 +3,7 @@ import { Activity, Pause, Play, Snowflake } from 'lucide-react'
 import { useLab, useTick } from '../app/lab'
 import { FS, LANE, RANGE_UV } from '../sim/model'
 import { MONTAGES, rowsFor, type Montage } from '../dsp/store'
+import { SpectrogramStrip } from './Spectrogram'
 
 const GUTTER = 78,
   RIGHT = 14,
@@ -249,6 +250,7 @@ export function Traces() {
           }}
         />
       </div>
+      <SpectrogramStrip />
       <footer className="trace-foot">
         <span>Positive up</span>
         <span>±{l.scale} µV per half-lane</span>
