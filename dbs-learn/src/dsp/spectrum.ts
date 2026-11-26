@@ -62,3 +62,9 @@ export function peak(s: Spectrum, lo: number, hi: number) {
 }
 
 export const BETA: [number, number] = [13, 35]
+
+/** A peak counts as an oscillation only if it stands well above the band's median level. */
+export function prominent(s: Spectrum, p: { local: boolean; value: number }, lo: number, hi: number, ratio = 2.5) {
+  const band = s.psd.filter((_, k) => s.freqs[k] >= lo && s.freqs[k] <= hi).sort((a, b) => a - b)
+  return p.local && band.length > 2 && p.value > ratio * band[Math.floor(band.length / 2)]
+}

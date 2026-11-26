@@ -1,0 +1,30 @@
+Subthalamic Lab · anatomical model credits
+
+brain.bin / brain.json (cerebral hemispheres, cerebellum, brainstem and head outline)
+
+These surfaces are adapted from the anatomical meshes distributed with Cortex Atlas
+(https://github.com/jeetblahiri/eeg-learn, public/anatomy/cortex.mesh and scalp.mesh),
+which that project distributes under Creative Commons Attribution-ShareAlike 4.0.
+Their sources, as credited there:
+
+- Cerebral surfaces: adapted from the Human Atlas 3D head by Dannysyed
+  (https://github.com/Dannysyed/human-atlas-face), derived from Z-Anatomy
+  (https://www.z-anatomy.com/) and BodyParts3D, © The Database Center for Life
+  Science (DBCLS) (https://lifesciencedb.jp/bp3d/).
+- Head outline: "Infinite, 3D Head Scan" by Lee Perry-Smith, Infinite-Realities /
+  Triplegangers, Creative Commons Attribution 3.0 Unported
+  (https://creativecommons.org/licenses/by/3.0/).
+
+Changes made for Subthalamic Lab (scripts/prepare_anatomy.py): the cerebral surface was
+split into its connected parts; small parts lying entirely within the deep core were
+removed; the remaining parts were grouped into left and right cerebrum, cerebellum and
+brainstem; coordinates were rescaled to millimetres in an MNI-like frame fitted to the
+cerebral bounding box; and vertices were re-quantized.
+
+The adapted surfaces in brain.bin and brain.json are distributed under Creative Commons
+Attribution-ShareAlike 4.0 International: https://creativecommons.org/licenses/by-sa/4.0/
+
+Deep structures (STN, globus pallidus, putamen, caudate, thalamus, red nucleus,
+substantia nigra) and the DBS leads are original schematic shapes generated in code
+(src/three/anatomy.ts) from rounded textbook positions. They are not an atlas and
+must not be used for surgical planning or targeting.

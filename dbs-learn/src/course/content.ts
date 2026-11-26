@@ -241,12 +241,12 @@ export const modules: CourseModule[] = [
         intro: 'Stimulation pulses are thousands of times larger than the LFP and arrive through the same lead.',
         explain: [
           'Stimulation commonly runs at around 130 Hz. At 250 samples per second the Nyquist frequency is 125 Hz, so a 130 Hz artifact cannot be represented and folds back to 250 − 130 = 120 Hz. Its harmonic at 260 Hz folds to 10 Hz.',
-          'Close to the stimulating contact the artifact can exceed the amplifier’s input range. A saturated (clipped) channel loses the LFP entirely for as long as it stays at the limit.',
+          'Close to the stimulating contact the artifact can exceed the amplifier’s input range. A saturated (clipped) channel loses the LFP entirely for as long as it stays at the limit. Clipping also creates new harmonics: the 4th harmonic of 130 Hz (520 Hz) folds to 520 − 2 × 250 = 20 Hz, a convincing but entirely artificial “beta peak”.',
         ],
         steps: [
           'Set Montage to Adjacent pairs. In the stimulation panel, turn stimulation on at left contact 1, 2 mA, 130 Hz.',
           'Select L 2–3 and find the artifact peak in the spectrum. Where does it appear?',
-          'Select L 1–2, which includes the stimulating contact, and look for flat-topped clipping in the trace.',
+          'Select L 0–1, which includes the stimulating contact, and raise the amplitude to 4 mA. Look for CLIPPED on the trace and a sharp peak at 20 Hz in the spectrum. Then return to 2 mA.',
         ],
         tools: ['stim', 'spectrum'],
         task: 'Stimulation runs at 130 Hz and the LFP is sampled at 250 Hz. Where does the artifact appear in the spectrum?',
