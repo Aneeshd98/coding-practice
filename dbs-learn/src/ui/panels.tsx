@@ -400,9 +400,11 @@ export function MovementPanel() {
   useTick(l.signals, 1000)
   const [fast, setFast] = useState(true)
   const [pair, setPair] = useState('0–2')
+  // The store is mutated in place, so its identity never changes: recompute every 25 blocks instead.
   const bucket = l.signals.revision - (l.signals.revision % 25)
   const course = useMemo(
     () => SIDES.map((side) => ({ name: side + ' ' + pair, result: movementCourse(l.signals, rowNamed(side + ' ' + pair)!) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- bucket is the cache key for the mutable store
     [l.signals, bucket, pair],
   )
   const ready = course.every((c) => c.result)

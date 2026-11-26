@@ -188,7 +188,9 @@ function Workspace() {
     if ((page !== 'lesson' && page !== 'assess') || !l.subject) return
     const wanted = page === 'assess' ? 'pd' : (lesson.disorder ?? 'pd')
     if (l.config.disorder !== wanted) l.change({ disorder: wanted }, 'Condition for this lesson: ' + wanted)
-  }, [page, lesson.id, l.subject])
+    // Only on entering a lesson or when a new patient starts: the learner may change the condition afterwards.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, lesson.id, lesson.disorder, l.subject])
   useEffect(() => {
     document.title = (page === 'map' ? 'Course map' : page === 'lab' ? 'Free lab' : page === 'assess' ? 'Patient assessment' : lesson.title) + ' · Subthalamic Lab'
   }, [page, lesson])
