@@ -15,6 +15,12 @@ export default defineConfig({
       args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
     },
   },
+  // Pixel snapshots are an opt-in, per-machine tool (npm run test:visual); the default run skips them.
+  snapshotPathTemplate: '{testDir}/.visual-baselines/{arg}{ext}',
+  projects: [
+    { name: 'default', testIgnore: /visual\.spec\.ts/ },
+    { name: 'visual', testMatch: /visual\.spec\.ts/ },
+  ],
   webServer: {
     command: 'npm run preview -- --port 4193 --strictPort',
     url,

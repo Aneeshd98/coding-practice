@@ -844,7 +844,7 @@ export class BrainScene {
       h = this.host.clientHeight
     const camDir = new THREE.Vector3()
     this.camera.getWorldDirection(camDir)
-    const placed: { x: number; y: number; w: number }[] = []
+    const placed: { x: number; y: number; w: number; h: number }[] = []
     for (const l of this.labels) {
       l.el ??= this.labelRoot?.querySelector<HTMLElement>(`[data-label="${l.id}"]`) ?? undefined
       if (!l.el) continue
@@ -852,16 +852,23 @@ export class BrainScene {
       const behind = l.world.clone().sub(this.camera.position).dot(camDir) < 0
       const x = (p.x * 0.5 + 0.5) * w
       let y = (0.5 - p.y * 0.5) * h
-      const width = l.el.offsetWidth || 60
-      // Contact numbers sit beside their contact; other labels step down past earlier ones.
-      if (l.kind !== 'contact')
-        for (let tries = 0; tries < 4; tries++) {
-          const hit = placed.find((q) => Math.abs(q.y - y) < 20 && x < q.x + q.w + 6 && q.x < x + width + 6)
-          if (!hit) break
-          y = hit.y + 22
+      const width = l.el.offsetWidth || 60,
+        height = l.el.offsetHeight || 24
+      // Contact numbers sit beside their contact; other labels step down past earlier ones,
+      // using their measured size, and are left out if there is still no room.
+      let crowded = false
+      if (l.kind !== 'contact') {
+        const hit = () => placed.find((q) => Math.abs(q.y - y) < (q.h + height) / 2 + 2 && x < q.x + q.w + 6 && q.x < x + width + 6)
+        for (let tries = 0, q = hit(); q; q = hit()) {
+          if (++tries > 6) {
+            crowded = true
+            break
+          }
+          y = q.y + (q.h + height) / 2 + 3
         }
-      const hidden = behind || x < 4 || y < 40 || x > w - 40 || y > h - 48
-      if (!hidden && l.kind !== 'contact') placed.push({ x, y, w: width })
+      }
+      const hidden = behind || crowded || x < 4 || y < 40 || x > w - 40 || y > h - 48
+      if (!hidden && l.kind !== 'contact') placed.push({ x, y, w: width, h: height })
       l.el.style.opacity = hidden ? '0' : '1'
       l.el.style.transform = `translate(${x.toFixed(1)}px, ${(y - 9).toFixed(1)}px)`
     }
