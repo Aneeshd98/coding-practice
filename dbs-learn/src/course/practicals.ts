@@ -1,4 +1,5 @@
-import { FS, LANE, type Config } from '../sim/model'
+import { FS, LANE, makeSubject, type Config } from '../sim/model'
+import { bestContact, thresholds } from '../sim/field'
 import { rowNamed, type Montage, type Row, type SignalStore } from '../dsp/store'
 import { BETA, bandPower, peak, welch } from '../dsp/spectrum'
 import { analyzeBursts } from '../dsp/bursts'
@@ -13,11 +14,15 @@ export interface Captures {
   off?: Capture
   on?: Capture
 }
+/** Thresholds the learner recorded for each left contact during a monopolar review (null: none up to the test limit). */
+export type ReviewLog = Record<number, { benefit?: number | null; side?: number | null; pulseWidth: number }>
 export interface PracticalContext {
   store: SignalStore
   viewEnd: number
   montage: Montage
   captures: Captures
+  review?: ReviewLog
+  seed?: number
 }
 export interface Exercise {
   steps: string[]
@@ -100,6 +105,16 @@ export const exercises: Record<ModuleId, Exercise> = {
     question: 'What mean left amplitude did your controller deliver over the last 20 seconds?',
     unit: 'mA',
     takeaway: 'You tuned a closed-loop controller to suppress beta while delivering a fraction of continuous stimulation.',
+  },
+  programming: {
+    steps: [
+      'In the Monopolar review panel, keep the pulse width at 60 µs. For each left contact, raise the amplitude until rigidity is at least half relieved and record the benefit threshold.',
+      'Keep raising it until a side effect appears and record that threshold, or record none if nothing appears by 5 mA.',
+      'Compare the therapeutic windows in your table.',
+    ],
+    question: 'Which left contact has the widest therapeutic window?',
+    choices: ['0', '1', '2', '3'],
+    takeaway: 'You ran a monopolar review and chose the contact with the widest margin between benefit and side effects.',
   },
   stim: {
     steps: [
@@ -187,6 +202,26 @@ export function grade(module: ModuleId, ctx: PracticalContext, answer: string): 
       if (mean > ADAPTIVE_ENERGY * max)
         return `Mean amplitude is ${((mean / max) * 100).toFixed(0)}% of the maximum. Raise the threshold so stimulation pauses between bursts.`
       if (!near(numeric(answer), mean, 0.1)) return 'Read the mean delivered amplitude in the Adaptive DBS panel and enter it in mA.'
+      return
+    }
+    case 'programming': {
+      if (ctx.seed === undefined) return 'The virtual patient is not ready yet.'
+      const subject = makeSubject(ctx.seed),
+        log = ctx.review ?? {}
+      for (let c = 0; c < 4; c++) {
+        const entry = log[c],
+          truth = thresholds(subject, 'L', c, 60)
+        if (!entry || entry.benefit === undefined || entry.side === undefined)
+          return `Record both thresholds for contact ${c} (benefit and side effect) before choosing.`
+        if (entry.pulseWidth !== 60) return `Contact ${c} was tested at ${entry.pulseWidth} µs. Repeat it at 60 µs.`
+        const matches = (mine: number | null, real: number | null) => (mine === null ? real === null : real !== null && Math.abs(mine - real) <= 0.3)
+        if (!matches(entry.benefit, truth.benefit))
+          return `Re-test contact ${c}: its recorded benefit threshold does not match what the patient shows. Step up in 0.1 mA increments.`
+        if (!matches(entry.side, truth.sideEffect))
+          return `Re-test contact ${c}: its recorded side-effect threshold does not match what the patient shows.`
+      }
+      const best = bestContact(subject, 'L', 60)
+      if (answer !== String(best)) return 'Compute each window as side-effect threshold minus benefit threshold (use 5 mA when no side effect appeared) and pick the widest.'
       return
     }
     case 'stim': {

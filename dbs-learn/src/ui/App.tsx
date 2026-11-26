@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { ArrowRight, AudioWaveform, Cable, Gauge, ChevronRight, CircleCheck, FlaskConical, GraduationCap, Layers3, PanelsTopLeft, Waves, Zap } from 'lucide-react'
+import { ArrowRight, AudioWaveform, Cable, Gauge, SlidersVertical, ChevronRight, CircleCheck, FlaskConical, GraduationCap, Layers3, PanelsTopLeft, Waves, Zap } from 'lucide-react'
 import { LabProvider, load, store, useLab } from '../app/lab'
 import { lessons, modules, moduleOf, type ModuleId, type Tool } from '../course/content'
 import { LessonView, ModuleOutline, ToolView } from './Lesson'
@@ -8,7 +8,7 @@ import { PatientBar } from './panels'
 import { Traces } from './Traces'
 
 const route = () => window.location.hash.replace(/^#\/?/, '').split('/')
-const moduleIcon: Record<ModuleId, typeof Zap> = { sensing: Cable, beta: AudioWaveform, bursts: Waves, stim: Zap, adaptive: Gauge }
+const moduleIcon: Record<ModuleId, typeof Zap> = { sensing: Cable, beta: AudioWaveform, bursts: Waves, stim: Zap, programming: SlidersVertical, adaptive: Gauge }
 const pad = (n: number) => String(n).padStart(2, '0')
 
 export function Mark() {
@@ -64,7 +64,7 @@ function CourseMap({ done, passed, resume }: { done: string[]; passed: string[];
         <div>
           <div className="eyebrow">Learning path</div>
           <h1>Course map</h1>
-          <p>Five modules take you from a single contact pair to closed-loop stimulation. Each ends with a practical graded from your own recording.</p>
+          <p>Six modules take you from a single contact pair to programming and closed-loop stimulation. Each ends with a practical graded from your own recording.</p>
         </div>
       </div>
       <div className="map-grid">
@@ -132,7 +132,7 @@ function CourseMap({ done, passed, resume }: { done: string[]; passed: string[];
   )
 }
 
-const allTools: Tool[] = ['spectrum', 'adaptive', 'bursts', 'stim', 'movement', 'sensing']
+const allTools: Tool[] = ['spectrum', 'adaptive', 'review', 'bursts', 'stim', 'movement', 'sensing']
 
 function Workspace() {
   const l = useLab()

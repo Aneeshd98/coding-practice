@@ -2,7 +2,8 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { SIDES, type Side } from '../sim/model'
-import { NUCLEI, activationRadius, add as add3, leadGeometry, mirror, nucleus, type LeadGeometry, type Nucleus, type Vec3 } from './anatomy'
+import { NUCLEI, add as add3, leadGeometry, mirror, nucleus, type LeadGeometry, type Nucleus, type Vec3 } from './anatomy'
+import { PATHWAYS, radius, reached } from '../sim/field'
 
 export type CortexMode = 'glass' | 'solid' | 'hidden'
 export type ViewPreset = 'overview' | 'coronal' | 'sagittal' | 'target'
@@ -12,6 +13,7 @@ export interface SceneState {
   revealed: boolean
   sensing: { side: Side; contacts: number[] } | null
   stimContact: Record<Side, number> | null
+  pulseWidth: number
   cortex: CortexMode
   head: boolean
   view: ViewPreset
@@ -191,6 +193,7 @@ export class BrainScene {
   private parts: THREE.Mesh[] = []
   private scalp: THREE.Mesh | null = null
   private nuclei = new Map<string, THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>>()
+  private pathways = new Map<string, THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>>()
   private leads: Partial<Record<Side, LeadParts>> = {}
   private state: SceneState | null = null
   private tween: { from: [THREE.Vector3, THREE.Vector3]; to: [THREE.Vector3, THREE.Vector3]; start: number } | null = null
@@ -335,6 +338,31 @@ export class BrainScene {
         this.nuclei.set(side + n.id, mesh)
         this.root.add(mesh)
       }
+    // Neighbouring pathways whose activation causes side effects; they turn red when the field reaches them.
+    for (const side of SIDES)
+      for (const p of PATHWAYS) {
+        const g = new THREE.SphereGeometry(1, 40, 24).scale(...p.radii).translate(...mirror(p.centre, side))
+        const material = new THREE.ShaderMaterial({
+          transparent: true,
+          depthWrite: false,
+          vertexShader: nucleusVertex,
+          fragmentShader: nucleusFragment,
+          uniforms: {
+            color: { value: new THREE.Color(p.id === 'capsule' ? '#cfd9ee' : '#e6d38c') },
+            glowColor: { value: new THREE.Color('#ff3b3b') },
+            glow: { value: 0 },
+            split: { value: 0 },
+            planePoint: { value: new THREE.Vector3() },
+            planeNormal: { value: new THREE.Vector3(0, 1, 0) },
+            opacity: { value: 0.16 },
+          },
+        })
+        const mesh = new THREE.Mesh(g, material)
+        mesh.renderOrder = 6
+        mesh.visible = false
+        this.pathways.set(side + p.id, mesh)
+        this.root.add(mesh)
+      }
   }
 
   private buildLead(geometry: LeadGeometry): LeadParts {
@@ -453,6 +481,7 @@ export class BrainScene {
         mesh.visible = visible
         mesh.material.uniforms.opacity.value = opacity
       }
+      for (const p of PATHWAYS) this.pathways.get(side + p.id)!.visible = (target && side === state.targetSide) || state.view === 'coronal'
     }
     if (force || !previous || previous.view !== state.view || previous.targetSide !== state.targetSide) this.goTo(state.view, state.targetSide, !previous)
     this.buildLabels()
@@ -470,6 +499,8 @@ export class BrainScene {
         add('stn', (side === 'L' ? 'Left' : 'Right') + ' STN', 'nucleus', add3(mirror(nucleus('stn').centre, side), mirror([4, -4, -1], side)), side)
         add('sn', 'Substantia nigra', 'nucleus', mirror(nucleus('sn').centre, side), side)
         add('rn', 'Red nucleus', 'nucleus', mirror(nucleus('rn').centre, side), side)
+        add('ic', 'Internal capsule', 'nucleus', mirror([17.6, -11, -1], side), side)
+        add('oc', 'Oculomotor fibres', 'nucleus', mirror([10.3, -15.2, -9.5], side), side)
         if (lead) {
           lead.geometry.contacts.forEach((c, i) => add('c' + i, String(i), 'contact', c, side))
           if (s.revealed) add('edge', 'β edge', 'edge', lead.geometry.edge, side)
@@ -503,8 +534,8 @@ export class BrainScene {
       const g = this.leads[side]!.geometry
       const centre = new THREE.Vector3(...g.contacts[1]).lerp(new THREE.Vector3(...g.contacts[2]), 0.5)
       const d = new THREE.Vector3(...g.direction)
-      // Look from in front and to the side, perpendicular to the lead.
-      const lateral = new THREE.Vector3(side === 'L' ? -1 : 1, 0.9, 0.15)
+      // Look from the front, slightly lateral and perpendicular to the lead, so lateral pathways sit beside it.
+      const lateral = new THREE.Vector3(side === 'L' ? -0.45 : 0.45, 1, -0.35)
       const view = lateral.sub(d.clone().multiplyScalar(lateral.dot(d))).normalize()
       target = this.world(centre.toArray() as Vec3)
       eye = this.world(centre.clone().addScaledVector(view, 30).toArray() as Vec3)
@@ -604,8 +635,17 @@ export class BrainScene {
         const show = mA > 0.02 && k !== undefined && k !== null
         if (show !== lead.vta.visible) animated = true
         lead.vta.visible = show
+        const pw = this.state?.pulseWidth ?? 60
+        const hit = show && this.state?.border ? reached(side, this.state.border[side], k!, mA, pw).map((p) => p.id) : []
+        for (const p of PATHWAYS) {
+          const u = this.pathways.get(side + p.id)!.material.uniforms
+          const goal = hit.includes(p.id) ? 1 : 0
+          if (u.glow.value !== goal) animated = true
+          u.glow.value = goal
+          u.opacity.value = goal ? 0.55 : 0.16
+        }
         if (show) {
-          lead.vta.scale.setScalar(activationRadius(mA))
+          lead.vta.scale.setScalar(radius(mA, pw))
           lead.vta.position.set(...lead.geometry.contacts[k!])
           lead.vta.material.uniforms.time.value = t
           lead.vta.material.uniforms.strength.value = Math.min(1, mA / 1.5)

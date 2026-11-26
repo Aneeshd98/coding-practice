@@ -30,7 +30,7 @@ test('a learner streams data, answers a checkpoint and completes the first lesso
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Why record between contacts')
   await page.reload()
   await page.getByRole('link', { name: 'Course map' }).click()
-  await expect(page.getByRole('img', { name: '1 of 12 lessons complete' })).toBeVisible()
+  await expect(page.getByRole('img', { name: '1 of 14 lessons complete' })).toBeVisible()
 })
 
 test('the sensing practical is graded from the live recording', async ({ page }) => {
@@ -78,4 +78,16 @@ test('adaptive DBS follows sensed beta and reports its energy use', async ({ pag
   await expect(page.locator('.patient .status-chip.stim')).toContainText('Adaptive · up to 3 mA')
   await page.getByRole('slider', { name: 'Threshold' }).fill('0.2')
   await expect(page.locator('.metric.stim').first()).toContainText(/[1-3]\.\d\d/, { timeout: 15_000 })
+})
+
+test('a monopolar review records thresholds and shows side effects as the amplitude rises', async ({ page }) => {
+  await page.goto('./#/lesson/monopolar-review')
+  await page.getByRole('tab', { name: 'Experiment' }).click()
+  await page.getByRole('button', { name: 'Contact 3', exact: true }).click()
+  const exam = page.locator('.exam')
+  await expect(exam).toContainText('None observed')
+  for (let i = 0; i < 6; i++) await page.getByRole('button', { name: '+0.5' }).click()
+  await expect(exam).toContainText('Muscle contraction')
+  await page.getByRole('button', { name: /Record side-effect threshold/ }).click()
+  await expect(page.locator('.table tr.current td').nth(1)).toHaveText('3.0 mA')
 })

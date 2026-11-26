@@ -131,5 +131,3 @@ export function leadGeometry(side: Side, border: number): LeadGeometry {
   }
 }
 
-/** Approximate radius (mm) of tissue activated around a stimulating contact, for illustration only. */
-export const activationRadius = (mA: number) => (mA > 0 ? 1.2 + 0.95 * Math.sqrt(mA) * 1.25 : 0)

@@ -1,11 +1,12 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { AudioWaveform, Camera, Gauge, Hand, HeartPulse, Pill, RefreshCw, Sparkles, Timer, UserRound, Waves, Zap } from 'lucide-react'
+import { AudioWaveform, Camera, Gauge, Hand, HeartPulse, Minus, Plus, SlidersVertical, Pill, RefreshCw, Sparkles, Timer, UserRound, Waves, Zap } from 'lucide-react'
 import { useLab, useTick } from '../app/lab'
 import { FS, LANE, SIDES, type Movement } from '../sim/model'
 import { rowNamed } from '../dsp/store'
 import { BETA, bandPower, peak, prominent, welch } from '../dsp/spectrum'
 import { analyzeBursts } from '../dsp/bursts'
 import { POST_S, PRE_S, movementCourse } from '../dsp/movement'
+import { TEST_MAX, response } from '../sim/field'
 import { ADAPTIVE_BETA, ADAPTIVE_ENERGY, betaPower, captureBursts, meanDelivered } from '../course/practicals'
 import { Chart } from './Chart'
 
@@ -592,6 +593,121 @@ export function AdaptivePanel() {
         <p className="note">
           Single-threshold controller on the left lead (stimulating contact {k}): band-pass ±3 Hz around the centre, rectify, smooth, then ramp up above threshold and down below it.
           Practical goal: beta ≤ {ADAPTIVE_BETA * 100}% of OFF with mean amplitude ≤ {ADAPTIVE_ENERGY * 100}% of maximum.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+export function ReviewPanel() {
+  const l = useLab()
+  const s = l.config.stim
+  const contact = s.contact.L,
+    mA = s.on ? s.amplitude : 0,
+    pw = s.pulseWidth
+  const r = l.subject ? response(l.subject, 'L', contact, mA, pw) : null
+  const test = (patch: { contact?: number; amplitude?: number; pulseWidth?: number }) =>
+    l.change({ stim: { on: true, ...(patch.contact !== undefined ? { contact: { L: patch.contact } } : {}), ...(patch.amplitude !== undefined ? { amplitude: patch.amplitude } : {}), ...(patch.pulseWidth ? { pulseWidth: patch.pulseWidth } : {}) } })
+  const step = (d: number) => test({ amplitude: Math.max(0, Math.min(TEST_MAX, Math.round((mA + d) * 10) / 10)) })
+  const record = (key: 'benefit' | 'side', value: number | null) =>
+    l.setReview({ ...l.review, [contact]: { ...l.review[contact], pulseWidth: pw, [key]: value } })
+  const fmt = (v: number | null | undefined) => (v === undefined ? '—' : v === null ? 'none' : v.toFixed(1) + ' mA')
+  const windowOf = (e?: { benefit?: number | null; side?: number | null }) =>
+    !e || e.benefit === undefined || e.side === undefined ? '—' : e.benefit === null ? 'no benefit' : ((e.side ?? TEST_MAX) - e.benefit).toFixed(1) + ' mA'
+  return (
+    <div className="tool">
+      <ToolHead icon={<SlidersVertical size={15} />} tone="stim" title="Monopolar review · left lead">
+        <label className="select">
+          Pulse width
+          <select aria-label="Pulse width" value={pw} onChange={(e) => test({ pulseWidth: +e.target.value })}>
+            {[30, 60, 90].map((v) => (
+              <option key={v} value={v}>
+                {v} µs
+              </option>
+            ))}
+          </select>
+        </label>
+      </ToolHead>
+      <div className="tool-body">
+        <div className="fields">
+          <div className="seg" role="group" aria-label="Contact under test">
+            {[0, 1, 2, 3].map((c) => (
+              <button key={c} aria-pressed={contact === c} onClick={() => test({ contact: c, amplitude: 0 })}>
+                Contact {c}
+              </button>
+            ))}
+          </div>
+          <div className="stepper">
+            <button className="icon-btn" aria-label="Decrease amplitude" onClick={() => step(-0.1)}>
+              <Minus size={15} />
+            </button>
+            <output aria-live="polite">{mA.toFixed(1)} mA</output>
+            <button className="icon-btn" aria-label="Increase amplitude" onClick={() => step(0.1)}>
+              <Plus size={15} />
+            </button>
+            <button className="btn ghost" onClick={() => step(0.5)}>
+              +0.5
+            </button>
+          </div>
+        </div>
+        {r && (
+          <div className="exam">
+            <div className="exam-row">
+              <span>Rigidity relief</span>
+              <div className="bar wide">
+                <i style={{ width: r.benefit * 100 + '%', background: r.benefit >= 0.5 ? 'var(--ok)' : 'var(--primary)' }} />
+              </div>
+              <b>{Math.round(r.benefit * 100)}%</b>
+            </div>
+            <div className="exam-row">
+              <span>Side effects</span>
+              <b className={r.effects.length ? 'warn' : ''}>{r.effects.length ? r.effects.map((e) => e.effect).join(' · ') : 'None observed'}</b>
+            </div>
+            <div className="exam-row">
+              <span>Field radius</span>
+              <b>{r.radius.toFixed(1)} mm</b>
+            </div>
+          </div>
+        )}
+        <div className="captures">
+          <button className="btn" onClick={() => record('benefit', mA)}>
+            Record benefit threshold · {mA.toFixed(1)} mA
+          </button>
+          <button className="btn" onClick={() => record('benefit', null)}>
+            No benefit before side effects
+          </button>
+          <button className="btn" onClick={() => record('side', mA)}>
+            Record side-effect threshold · {mA.toFixed(1)} mA
+          </button>
+          <button className="btn" onClick={() => record('side', null)}>
+            No side effect by {TEST_MAX} mA
+          </button>
+        </div>
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Contact</th>
+              <th>Benefit threshold</th>
+              <th>Side-effect threshold</th>
+              <th>Window</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[0, 1, 2, 3].map((c) => (
+              <tr key={c} className={c === contact ? 'current' : ''}>
+                <th>
+                  {c}
+                  {l.review[c] && l.review[c].pulseWidth !== 60 ? ` · ${l.review[c].pulseWidth} µs` : ''}
+                </th>
+                <td>{fmt(l.review[c]?.benefit)}</td>
+                <td>{fmt(l.review[c]?.side)}</td>
+                <td>{windowOf(l.review[c])}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="note">
+          Benefit means at least 50% rigidity relief. Testing stops at {TEST_MAX} mA. Use the brain model in Target view to see the field and any pathway it reaches. Teaching model only: thresholds come from a schematic field, not a validated volume-of-tissue-activated model.
         </p>
       </div>
     </div>

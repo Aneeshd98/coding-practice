@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { FS, INITIAL, applyPatch, type Config, type ConfigPatch, type Movement, type Subject } from '../sim/model'
 import { SignalStore, rowsFor, type Montage } from '../dsp/store'
-import { CAPTURE_SECONDS, type Captures } from '../course/practicals'
+import { CAPTURE_SECONDS, type Captures, type ReviewLog } from '../course/practicals'
 
 export function load<T>(key: string, fallback: T): T {
   try {
@@ -33,6 +33,7 @@ function useController() {
   const [montage, setMontageState] = useState<Montage>('Sandwich pairs')
   const [focus, setFocus] = useState('L 0–2')
   const [captures, setCaptures] = useState<Captures>({})
+  const [review, setReview] = useState<ReviewLog>({})
   const [protocol, setProtocol] = useState<{ done: number; total: number } | null>(null)
   const [revealed, setRevealed] = useState(false)
   const [notice, setNotice] = useState('')
@@ -50,6 +51,7 @@ function useController() {
     w.postMessage({ type: 'init', seed })
     setConfig(INITIAL)
     setCaptures({})
+    setReview({})
     setRevealed(false)
     setFrozen(null)
     return () => w.terminate()
@@ -111,6 +113,8 @@ function useController() {
     setFocus,
     captures,
     capture,
+    review,
+    setReview,
     protocol,
     runMovement: (fast: boolean, cycles = 12, hand: Movement = 'right') => {
       setFrozen(null)

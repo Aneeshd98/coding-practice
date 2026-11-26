@@ -1,5 +1,5 @@
-export type Tool = 'lead' | 'sensing' | 'spectrum' | 'bursts' | 'movement' | 'stim' | 'adaptive'
-export type ModuleId = 'sensing' | 'beta' | 'bursts' | 'stim' | 'adaptive'
+export type Tool = 'lead' | 'sensing' | 'spectrum' | 'bursts' | 'movement' | 'stim' | 'adaptive' | 'review'
+export type ModuleId = 'sensing' | 'beta' | 'bursts' | 'stim' | 'programming' | 'adaptive'
 
 export interface Reading {
   title: string
@@ -45,6 +45,9 @@ const read = {
   neumann: pubmed('Toward Electrophysiology-Based Intelligent Adaptive Deep Brain Stimulation for Movement Disorders'),
   percept: pubmed('Device profile of the percept PC deep brain stimulation system'),
   arlotti: pubmed('Eight-hours adaptive deep brain stimulation in patients with Parkinson disease'),
+  volkmann: pubmed('Introduction to the programming of deep brain stimulators'),
+  shortPulse: pubmed('Short pulse width widens the therapeutic window of subthalamic neurostimulation'),
+  vta: pubmed('Patient-specific analysis of the volume of tissue activated during deep brain stimulation'),
 }
 
 export const modules: CourseModule[] = [
@@ -302,6 +305,55 @@ export const modules: CourseModule[] = [
         feedback: 'The flanking pair cancels most of the artifact, so beta remains measurable while stimulation runs.',
         hint: 'Which recording kept the artifact smallest in the previous lesson?',
         sources: [read.little, read.burstsAdbs, read.neumann],
+      },
+    ],
+  },
+  {
+    id: 'programming',
+    title: 'Program the stimulator',
+    summary: 'Test each contact for benefit and side effects, and choose the widest therapeutic window.',
+    lessons: [
+      {
+        id: 'monopolar-review',
+        title: 'Run a monopolar review',
+        intro: 'Test one contact at a time, raising the amplitude until benefit appears and then until a side effect does.',
+        explain: [
+          'After implantation, clinicians test each contact in turn with the implant case as the return electrode (monopolar). For each contact they raise the amplitude in small steps, note the lowest amplitude giving clear benefit (for example, reduced rigidity) and the lowest amplitude producing a side effect.',
+          'The difference between the two is the therapeutic window. A wide window lets the patient be treated comfortably and leaves room for adjustment. Here, sensing data from earlier modules gives a head start: the contacts nearest the beta region often give benefit at low amplitudes.',
+        ],
+        steps: [
+          'Open the Monopolar review panel. Select contact 0 and step the amplitude up in 0.1 mA increments until rigidity relief reaches at least 50%. Record the benefit threshold.',
+          'Keep stepping up until a side effect appears, and record it. Watch the brain model in Target view: the field and any reached pathway light up.',
+          'Repeat for the other contacts and compare their windows in the table.',
+        ],
+        tools: ['review'],
+        task: 'Contact 2 gives benefit at 2.0 mA and muscle contraction at 2.4 mA. Contact 1 gives benefit at 1.6 mA and muscle contraction at 4.1 mA. Which is the better choice?',
+        options: ['Contact 2, because its side effect needs more than 2 mA', 'Contact 1, because its window is 2.5 mA rather than 0.4 mA', 'Either, because both give benefit'],
+        correct: 1,
+        feedback: 'Contact 1 leaves 2.5 mA between benefit and side effect; contact 2 only 0.4 mA. The wider window is safer and easier to adjust.',
+        hint: 'Subtract each benefit threshold from its side-effect threshold.',
+        sources: [read.volkmann, read.vta],
+      },
+      {
+        id: 'field-shaping',
+        title: 'Where side effects come from',
+        intro: 'Side effects tell you which neighbouring pathway the field has reached.',
+        explain: [
+          'The internal capsule, carrying motor fibres to the face and limbs, runs alongside the STN laterally and anteriorly. Spread into it causes muscle contraction or slurred speech. Medially and ventrally, spread towards oculomotor fibres can cause eye deviation or double vision. The type of side effect therefore hints at the direction of spread.',
+          'Pulse width changes how much charge each pulse delivers. Shorter pulses need more current for the same effect but can affect different elements unequally. Clinical studies have reported wider therapeutic windows with short pulses (around 30 µs). In this model, short pulses spare the capsule more than the motor STN.',
+        ],
+        steps: [
+          'In Target view, stimulate the top contact and raise the amplitude until the internal capsule lights up.',
+          'Try the deepest contact and see which pathway it reaches first.',
+          'Switch to 30 µs and repeat one contact: compare both thresholds with 60 µs.',
+        ],
+        tools: ['review'],
+        task: 'Muscle contraction in the face appears at a low amplitude on an upper contact. Which structure has the field most likely reached?',
+        options: ['The internal capsule', 'The red nucleus', 'The contralateral STN'],
+        correct: 0,
+        feedback: 'Motor fibres in the internal capsule run lateral to the STN; their activation causes muscle contraction.',
+        hint: 'Which nearby pathway carries motor commands to the face and limbs?',
+        sources: [read.shortPulse, read.volkmann, read.vta],
       },
     ],
   },

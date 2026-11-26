@@ -36,6 +36,8 @@ export interface StimSettings {
   contact: Record<Side, number>
   amplitude: number
   frequency: number
+  /** Pulse width (µs). */
+  pulseWidth: number
 }
 /** Single-threshold adaptive DBS: amplitude ramps up while sensed beta exceeds the threshold. */
 export interface AdaptiveSettings {
@@ -65,7 +67,7 @@ export type ConfigPatch = Partial<Omit<Config, 'stim' | 'adaptive'>> & {
 export const INITIAL: Config = {
   medication: 'off',
   movement: 'rest',
-  stim: { on: false, contact: { L: 1, R: 1 }, amplitude: 2, frequency: 130 },
+  stim: { on: false, contact: { L: 1, R: 1 }, amplitude: 2, frequency: 130, pulseWidth: 60 },
   adaptive: { on: false, centre: 20, threshold: 1.0, ramp: 6, smoothing: 0.25, min: 0, max: 3 },
   ecg: true,
 }
@@ -234,7 +236,10 @@ export class Generator {
         // Soft start: amplitude ramps over half a second.
         this.ramp[si] = Math.max(0, Math.min(1, this.ramp[si] + (want ? 1 : -1) / (0.5 * FS)))
         const reach = Math.exp(-((contactZ(k) - (border - 1)) ** 2) / (2 * 2.2 ** 2))
-        const effect = this.ramp[si] * (amp / (amp + 1.5)) * reach
+        // Charge per pulse matters: express the amplitude as its 60 µs equivalent (strength–duration, chronaxie 40 µs).
+        const pw = cfg.stim.pulseWidth || 60
+        const equivalent = (amp * (1 + 40 / 60)) / (1 + 40 / pw)
+        const effect = this.ramp[si] * (equivalent / (equivalent + 1.5)) * reach
         // Suppression builds within a few hundred milliseconds and outlasts the stimulation by about a second.
         this.stimF[si] += (effect - this.stimF[si]) / ((effect > this.stimF[si] ? 0.25 : 1.2) * FS)
         const sf = this.stimF[si]

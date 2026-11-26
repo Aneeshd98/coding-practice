@@ -88,6 +88,7 @@ export function BrainPanel() {
       revealed: l.revealed,
       sensing: focus ? { side: focus.side, contacts: [focus.a % 4, ...(focus.b < 0 ? [] : [focus.b % 4])] } : null,
       stimContact: delivered.stim.on ? delivered.stim.contact : null,
+      pulseWidth: delivered.stim.pulseWidth ?? 60,
       cortex,
       head,
       view,

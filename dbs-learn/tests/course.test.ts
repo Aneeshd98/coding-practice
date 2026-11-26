@@ -18,7 +18,7 @@ function session(seed = 7) {
 }
 
 test('course content is complete and every answer index is valid', () => {
-  assert.equal(modules.length, 5)
+  assert.equal(modules.length, 6)
   assert.equal(new Set(lessons.map((l) => l.id)).size, lessons.length)
   for (const l of lessons) {
     assert.ok(l.correct >= 0 && l.correct < l.options.length, l.id)
@@ -91,4 +91,31 @@ test('the adaptive practical requires real suppression, energy savings and stabl
   // Changing a setting inside the window invalidates it.
   run(5, { adaptive: { threshold: 0.72 } })
   assert.match(grade('adaptive', ctx(), mean.toFixed(2))!, /no setting changes/)
+})
+
+test('the programming practical needs a complete, accurate review and the widest window', async () => {
+  const { thresholds, bestContact } = await import('../src/sim/field')
+  const { makeSubject } = await import('../src/sim/model')
+  const { store } = session()
+  const subject = makeSubject(7)
+  const ctx = (review: Record<number, { benefit?: number | null; side?: number | null; pulseWidth: number }>) => ({
+    store,
+    viewEnd: store.end,
+    montage: 'Sandwich pairs' as const,
+    captures: {},
+    review,
+    seed: 7,
+  })
+  const truthful = Object.fromEntries(
+    [0, 1, 2, 3].map((c) => {
+      const t = thresholds(subject, 'L', c, 60)
+      return [c, { benefit: t.benefit, side: t.sideEffect, pulseWidth: 60 }]
+    }),
+  )
+  const best = String(bestContact(subject, 'L', 60))
+  assert.match(grade('programming', ctx({ 0: truthful[0] }), best)!, /contact 1/)
+  assert.equal(grade('programming', ctx(truthful), best), undefined)
+  assert.ok(grade('programming', ctx(truthful), best === '0' ? '3' : '0'))
+  const sloppy = { ...truthful, 1: { ...truthful[1], benefit: (truthful[1].benefit ?? 2) + 1 } }
+  assert.match(grade('programming', ctx(sloppy), best)!, /Re-test contact 1/)
 })

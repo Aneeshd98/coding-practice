@@ -1598,3 +1598,52 @@ details.reading ul {
 .fields + .chart {
   margin-top: 16px;
 }
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.stepper output {
+  min-width: 64px;
+  text-align: center;
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--stim);
+}
+.exam {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+}
+.exam-row {
+  display: grid;
+  grid-template-columns: 120px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  font-size: 13.5px;
+}
+.exam-row span {
+  color: var(--muted);
+}
+.exam-row b {
+  font-family: var(--mono);
+  font-weight: 500;
+}
+.exam-row b.warn {
+  color: var(--warn);
+}
+.exam-row:not(:first-child) b {
+  grid-column: 2 / 4;
+}
+.bar.wide {
+  height: 8px;
+}
+.table tr.current th,
+.table tr.current td {
+  background: var(--select);
+}
