@@ -197,7 +197,7 @@ export function BrainPanel() {
           <b>Sensing</b> {sensing}
         </span>
         <span className="kv">
-          <b>Stimulation</b> {stim.on ? `L${stim.contact.L} · R${stim.contact.R} · ${stim.amplitude.toFixed(1)} mA · ${stim.frequency} Hz` : 'off'}
+          <b>Stimulation</b> {stim.on ? `L${stim.contact.L} · R${stim.contact.R} · ${l.config.adaptive.on ? 'adaptive ≤ ' + l.config.adaptive.max : stim.amplitude.toFixed(1)} mA · ${stim.frequency} Hz` : 'off'}
         </span>
         <span className="kv muted">{usable ? 'Drag to rotate · scroll to zoom · nuclei are schematic' : 'Deep nuclei are schematic'}</span>
       </footer>

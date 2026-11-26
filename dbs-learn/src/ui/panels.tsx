@@ -1,12 +1,12 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { AudioWaveform, Camera, Hand, HeartPulse, Pill, RefreshCw, Sparkles, Timer, UserRound, Waves, Zap } from 'lucide-react'
+import { AudioWaveform, Camera, Gauge, Hand, HeartPulse, Pill, RefreshCw, Sparkles, Timer, UserRound, Waves, Zap } from 'lucide-react'
 import { useLab, useTick } from '../app/lab'
 import { FS, LANE, SIDES, type Movement } from '../sim/model'
 import { rowNamed } from '../dsp/store'
 import { BETA, bandPower, peak, prominent, welch } from '../dsp/spectrum'
 import { analyzeBursts } from '../dsp/bursts'
 import { POST_S, PRE_S, movementCourse } from '../dsp/movement'
-import { betaPower, captureBursts } from '../course/practicals'
+import { ADAPTIVE_BETA, ADAPTIVE_ENERGY, betaPower, captureBursts, meanDelivered } from '../course/practicals'
 import { Chart } from './Chart'
 
 export const TRIALS = 12
@@ -74,7 +74,7 @@ export function PatientBar() {
       </div>
       <span className={'status-chip' + (now.stim.on ? ' stim' : '')}>
         <Zap size={13} />
-        {now.stim.on ? `Stim ${now.stim.amplitude.toFixed(1)} mA · ${now.stim.frequency} Hz` : 'Stimulation off'}
+        {!now.stim.on ? 'Stimulation off' : now.adaptive.on ? `Adaptive · up to ${now.adaptive.max} mA` : `Stim ${now.stim.amplitude.toFixed(1)} mA · ${now.stim.frequency} Hz`}
       </span>
       {bpm && (
         <span className="status-chip heart" title="Heart rate from the ECG witness">
@@ -462,6 +462,137 @@ export function StimPanel() {
           </label>
         </div>
         <p className="note">Teaching values only. Stimulation soft-starts over half a second. Nothing here reflects settings for a real device or patient.</p>
+      </div>
+    </div>
+  )
+}
+
+export function AdaptivePanel() {
+  const l = useLab()
+  useTick(l.signals, 500)
+  const a = l.config.adaptive,
+    k = l.config.stim.contact.L
+  const pair = k >= 1 && k <= 2 ? `${k - 1}–${k + 1}` : k === 0 ? '0–1 (contains the stimulating contact)' : '2–3 (contains the stimulating contact)'
+  const end = l.viewEnd(),
+    n = Math.max(0, Math.min(15 * FS, end - l.signals.start))
+  const lane = (id: number) => Float64Array.from({ length: n }, (_, i) => l.signals.at(end - n + i, id))
+  const estimate = lane(LANE.senseL),
+    amplitude = lane(LANE.stimL)
+  const win = Math.min(20 * FS, end - l.signals.start)
+  const mean = meanDelivered(l.signals, end - win, end)
+  let active = 0
+  for (let i = end - win; i < end; i++) if (l.signals.at(i, LANE.stimL) > 0.1) active++
+  const row = rowNamed('L 0–2')!
+  const beta = win > 2 * FS ? betaPower(l.signals, end - win, end, row) : NaN
+  const off = l.captures.off && l.signals.has(l.captures.off.start) ? betaPower(l.signals, l.captures.off.start, l.captures.off.end, row) : null
+  const ratio = off ? beta / off : null
+  const set = (patch: Partial<typeof a>, label?: string) => l.change({ adaptive: patch }, label)
+  return (
+    <div className="tool">
+      <ToolHead icon={<Gauge size={15} />} tone="stim" title="Adaptive DBS · left">
+        <label className="switch">
+          <input
+            type="checkbox"
+            role="switch"
+            aria-label="Adaptive stimulation"
+            checked={a.on && l.config.stim.on}
+            onChange={(e) => l.change({ adaptive: { on: e.target.checked }, ...(e.target.checked ? { stim: { on: true } } : {}) }, 'Adaptive DBS ' + (e.target.checked ? 'on' : 'off'))}
+          />
+          <span className="track" />
+          {a.on && l.config.stim.on ? 'Adaptive' : 'Off'}
+        </label>
+      </ToolHead>
+      <div className="tool-body">
+        <div className="fields">
+          <label>
+            Sensing centre <b>{a.centre} Hz</b>
+            <input type="range" min={13} max={35} step={0.5} value={a.centre} aria-label="Sensing centre" onChange={(e) => set({ centre: +e.target.value })} />
+          </label>
+          <label>
+            Threshold <b>{a.threshold.toFixed(2)} µV</b>
+            <input type="range" min={0.2} max={2.5} step={0.05} value={a.threshold} aria-label="Threshold" onChange={(e) => set({ threshold: +e.target.value })} />
+          </label>
+          <label>
+            Ramp
+            <select aria-label="Ramp" value={a.ramp} onChange={(e) => set({ ramp: +e.target.value }, 'Ramp ' + e.target.value + ' mA/s')}>
+              {[1.5, 3, 6, 12].map((v) => (
+                <option key={v} value={v}>
+                  {v} mA/s
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Smoothing
+            <select aria-label="Smoothing" value={a.smoothing} onChange={(e) => set({ smoothing: +e.target.value }, 'Smoothing ' + e.target.value + ' s')}>
+              {[0.1, 0.25, 0.5, 1, 2].map((v) => (
+                <option key={v} value={v}>
+                  {v} s
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Maximum
+            <select aria-label="Maximum amplitude" value={a.max} onChange={(e) => set({ max: +e.target.value }, 'Adaptive maximum ' + e.target.value + ' mA')}>
+              {[1.5, 2, 2.5, 3, 3.5, 4].map((v) => (
+                <option key={v} value={v}>
+                  {v} mA
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <Chart
+          series={[
+            { name: 'sensed beta', y: estimate, color: color.beta, width: 1.6 },
+            { name: 'threshold', y: new Float64Array(n).fill(a.threshold), color: color.stim, dashed: true, width: 1.3 },
+          ]}
+          x0={-n / FS}
+          x1={0}
+          zero
+          xLabel="Seconds before the view edge"
+          yLabel={`Controller estimate from L ${pair} (µV)`}
+          height={150}
+          unit=" s"
+        />
+        <Chart
+          series={[{ name: 'delivered amplitude', y: amplitude, color: color.stim, fill: true, width: 1.6 }]}
+          x0={-n / FS}
+          x1={0}
+          yRange={[0, Math.max(a.max, l.config.stim.amplitude) + 0.2]}
+          xLabel="Seconds before the view edge"
+          yLabel="Left stimulation amplitude (mA)"
+          height={130}
+          unit=" s"
+        />
+        <div className="metrics">
+          <div className="metric stim">
+            <small>Mean amplitude · 20 s</small>
+            <b>
+              {mean.toFixed(2)}
+              <em>mA · {a.max ? ((mean / a.max) * 100).toFixed(0) : 0}% of max</em>
+            </b>
+          </div>
+          <div className="metric stim">
+            <small>Time stimulating</small>
+            <b>
+              {win ? ((100 * active) / win).toFixed(0) : '—'}
+              <em>%</em>
+            </b>
+          </div>
+          <div className="metric beta">
+            <small>L 0–2 beta vs OFF capture</small>
+            <b>
+              {ratio === null ? '—' : (ratio * 100).toFixed(0)}
+              <em>{ratio === null ? 'capture OFF first' : '% of OFF'}</em>
+            </b>
+          </div>
+        </div>
+        <p className="note">
+          Single-threshold controller on the left lead (stimulating contact {k}): band-pass ±3 Hz around the centre, rectify, smooth, then ramp up above threshold and down below it.
+          Practical goal: beta ≤ {ADAPTIVE_BETA * 100}% of OFF with mean amplitude ≤ {ADAPTIVE_ENERGY * 100}% of maximum.
+        </p>
       </div>
     </div>
   )

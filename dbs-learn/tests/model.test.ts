@@ -210,3 +210,23 @@ test('a noise wiggle is not a beta peak, a real one is, and a clipped artifact c
   const fake = peak(clipped, 13, 35)
   assert.ok(prominent(clipped, fake, 13, 35) && Math.abs(fake.hz - 20) < 0.6, String(fake.hz))
 })
+
+test('the adaptive controller ramps with sensed beta and saves energy against continuous stimulation', () => {
+  const mean = (s: SignalStore, lane: number) => {
+    let t = 0
+    for (let i = s.end - 20 * FS; i < s.end; i++) t += s.at(i, lane)
+    return t / (20 * FS)
+  }
+  const adaptive = (extra: object) => record({ stim: { on: true }, adaptive: { on: true, centre: 19.4, max: 3, ...extra } }).store
+  // A threshold below the estimate's floor behaves like continuous stimulation; one above its ceiling never stimulates.
+  assert.ok(mean(adaptive({ threshold: 0.1 }), LANE.stimL) > 2.9)
+  assert.ok(mean(adaptive({ threshold: 5 }), LANE.stimL) < 0.05)
+  // A tuned controller suppresses beta with a fraction of the energy.
+  const off = record({}).store
+  const tuned = adaptive({ threshold: 0.7, ramp: 6, smoothing: 0.25 })
+  const ratio = beta(tuned, 'L 0–2') / beta(off, 'L 0–2')
+  assert.ok(ratio < 0.65, 'beta ratio ' + ratio)
+  assert.ok(mean(tuned, LANE.stimL) < 0.4 * 3, 'mean amplitude ' + mean(tuned, LANE.stimL))
+  // A sensing band far from the peak barely triggers.
+  assert.ok(mean(adaptive({ threshold: 0.7, centre: 32 }), LANE.stimL) < mean(tuned, LANE.stimL) / 2)
+})

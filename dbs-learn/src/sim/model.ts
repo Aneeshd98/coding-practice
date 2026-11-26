@@ -23,9 +23,12 @@ export const ch = (side: Side, contact: number) => (side === 'L' ? 0 : 4) + cont
 /** Height of a contact centre above contact 0, the deepest contact. */
 export const contactZ = (contact: number) => contact * PITCH_MM
 
-/** Witness lanes: the heart, delivered stimulation (mA), true burst state, and the true beta envelope. */
-export const LANE = { neural: 8, ecg: 16, stimL: 17, stimR: 18, burstL: 19, burstR: 20, betaL: 21, betaR: 22 } as const
-export const STRIDE = 23
+/**
+ * Witness lanes: the heart, delivered stimulation (mA), true burst state, the true beta envelope,
+ * and the adaptive controller's own beta estimate (µV).
+ */
+export const LANE = { neural: 8, ecg: 16, stimL: 17, stimR: 18, burstL: 19, burstR: 20, betaL: 21, betaR: 22, senseL: 23, senseR: 24 } as const
+export const STRIDE = 25
 
 export type Movement = 'rest' | 'left' | 'right'
 export interface StimSettings {
@@ -34,19 +37,36 @@ export interface StimSettings {
   amplitude: number
   frequency: number
 }
+/** Single-threshold adaptive DBS: amplitude ramps up while sensed beta exceeds the threshold. */
+export interface AdaptiveSettings {
+  on: boolean
+  /** Centre of the ±3 Hz sensing band (Hz). */
+  centre: number
+  /** Beta amplitude threshold (µV). */
+  threshold: number
+  /** Ramp speed (mA per second). */
+  ramp: number
+  /** Time constant of the smoothed beta estimate (s). */
+  smoothing: number
+  min: number
+  max: number
+}
 export interface Config {
   medication: 'off' | 'on'
   movement: Movement
   stim: StimSettings
+  adaptive: AdaptiveSettings
   ecg: boolean
 }
-export type ConfigPatch = Partial<Omit<Config, 'stim'>> & {
+export type ConfigPatch = Partial<Omit<Config, 'stim' | 'adaptive'>> & {
   stim?: Partial<Omit<StimSettings, 'contact'>> & { contact?: Partial<Record<Side, number>> }
+  adaptive?: Partial<AdaptiveSettings>
 }
 export const INITIAL: Config = {
   medication: 'off',
   movement: 'rest',
   stim: { on: false, contact: { L: 1, R: 1 }, amplitude: 2, frequency: 130 },
+  adaptive: { on: false, centre: 20, threshold: 1.0, ramp: 6, smoothing: 0.25, min: 0, max: 3 },
   ecg: true,
 }
 export function applyPatch(config: Config, patch: ConfigPatch): Config {
@@ -58,6 +78,7 @@ export function applyPatch(config: Config, patch: ConfigPatch): Config {
       ...patch.stim,
       contact: { ...config.stim.contact, ...patch.stim?.contact },
     },
+    adaptive: { ...config.adaptive, ...patch.adaptive },
   }
 }
 
@@ -132,6 +153,10 @@ export class Generator {
   private ramp = [0, 0]
   private beat = 0.3
   private rate = 1.15
+  /** Adaptive controller state per side: delivered amplitude, band-pass memory, smoothed estimate. */
+  private adaptAmp = [0, 0]
+  private bp = new Float64Array(8)
+  private estimate = [0, 0]
 
   constructor(seed = 7, config: ConfigPatch = {}) {
     this.config = applyPatch(INITIAL, config)
@@ -202,14 +227,16 @@ export class Generator {
           this.rebound[si]--
         }
         this.moveF[si] += (target - this.moveF[si]) / (0.12 * FS)
-        const k = cfg.stim.contact[side],
-          amp = cfg.stim.amplitude
-        const want = cfg.stim.on && amp > 0 ? 1 : 0
+        const k = cfg.stim.contact[side]
+        const adaptive = cfg.adaptive.on && cfg.stim.on
+        const amp = adaptive ? this.adaptAmp[si] : cfg.stim.amplitude
+        const want = cfg.stim.on && (adaptive || amp > 0) ? 1 : 0
         // Soft start: amplitude ramps over half a second.
         this.ramp[si] = Math.max(0, Math.min(1, this.ramp[si] + (want ? 1 : -1) / (0.5 * FS)))
         const reach = Math.exp(-((contactZ(k) - (border - 1)) ** 2) / (2 * 2.2 ** 2))
         const effect = this.ramp[si] * (amp / (amp + 1.5)) * reach
-        this.stimF[si] += (effect - this.stimF[si]) / (0.8 * FS)
+        // Suppression builds within a few hundred milliseconds and outlasts the stimulation by about a second.
+        this.stimF[si] += (effect - this.stimF[si]) / ((effect > this.stimF[si] ? 0.25 : 1.2) * FS)
         const sf = this.stimF[si]
         const rate = lerp(1.0, 1.3, this.med) * (1 - 0.45 * sf)
         const meanDuration = lerp(0.45, 0.2, this.med) * (1 - 0.5 * sf)
@@ -236,6 +263,7 @@ export class Generator {
         const f = cfg.stim.frequency
         // The artifact after the analog anti-alias stage: the fundamental plus a weak harmonic.
         const wave = stimAmp ? Math.sin(TAU * f * t + 0.4) + 0.12 * Math.sin(2 * TAU * f * t + 1.1) : 0
+        const acquired = [0, 0, 0, 0]
         for (let c = 0; c < CONTACTS; c++) {
           const i = si * 4 + c
           const slow = (this.local[2 * i] = 0.97 * this.local[2 * i] + 0.2 * this.gauss())
@@ -249,9 +277,28 @@ export class Generator {
             // Slight tissue asymmetry keeps the flanking-pair residual small but non-zero.
             artifact = ((stimAmp * (c > k ? 1.03 : 1)) / (1 + d / 0.75)) * wave
           }
-          out[o + i] = neural + cardiac + artifact
+          out[o + i] = acquired[c] = neural + cardiac + artifact
           out[o + LANE.neural + i] = neural
         }
+        // The controller senses the pair flanking the stimulating contact; without one it must use a pair that contains it.
+        const [a, b] = k >= 1 && k <= 2 ? [k - 1, k + 1] : k === 0 ? [0, 1] : [2, 3]
+        const sensed = Math.max(-RANGE_UV, Math.min(RANGE_UV, acquired[a] - acquired[b]))
+        const ad = cfg.adaptive
+        const w = (TAU * ad.centre) / FS,
+          alpha = Math.sin(w) / (2 * (ad.centre / 6)),
+          a0 = 1 + alpha
+        const m = si * 4,
+          y = (alpha / a0) * sensed - (alpha / a0) * this.bp[m + 1] + ((2 * Math.cos(w)) / a0) * this.bp[m + 2] - ((1 - alpha) / a0) * this.bp[m + 3]
+        this.bp[m + 1] = this.bp[m]
+        this.bp[m] = sensed
+        this.bp[m + 3] = this.bp[m + 2]
+        this.bp[m + 2] = y
+        this.estimate[si] += ((Math.abs(y) * Math.PI) / 2 - this.estimate[si]) / Math.max(1, ad.smoothing * FS)
+        if (adaptive) {
+          const step = ad.ramp / FS
+          this.adaptAmp[si] = Math.max(ad.min, Math.min(ad.max, this.adaptAmp[si] + (this.estimate[si] > ad.threshold ? step : -step)))
+        } else this.adaptAmp[si] = cfg.adaptive.min
+        out[o + (si ? LANE.senseR : LANE.senseL)] = this.estimate[si]
         out[o + (si ? LANE.burstR : LANE.burstL)] = inBurst
         out[o + (si ? LANE.stimR : LANE.stimL)] = this.ramp[si] * amp
         out[o + (si ? LANE.betaR : LANE.betaL)] = level * envelope

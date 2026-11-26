@@ -1,5 +1,5 @@
-export type Tool = 'lead' | 'sensing' | 'spectrum' | 'bursts' | 'movement' | 'stim'
-export type ModuleId = 'sensing' | 'beta' | 'bursts' | 'stim'
+export type Tool = 'lead' | 'sensing' | 'spectrum' | 'bursts' | 'movement' | 'stim' | 'adaptive'
+export type ModuleId = 'sensing' | 'beta' | 'bursts' | 'stim' | 'adaptive'
 
 export interface Reading {
   title: string
@@ -44,6 +44,7 @@ const read = {
   fooof: pubmed('Parameterizing neural power spectra into periodic and aperiodic components'),
   neumann: pubmed('Toward Electrophysiology-Based Intelligent Adaptive Deep Brain Stimulation for Movement Disorders'),
   percept: pubmed('Device profile of the percept PC deep brain stimulation system'),
+  arlotti: pubmed('Eight-hours adaptive deep brain stimulation in patients with Parkinson disease'),
 }
 
 export const modules: CourseModule[] = [
@@ -301,6 +302,63 @@ export const modules: CourseModule[] = [
         feedback: 'The flanking pair cancels most of the artifact, so beta remains measurable while stimulation runs.',
         hint: 'Which recording kept the artifact smallest in the previous lesson?',
         sources: [read.little, read.burstsAdbs, read.neumann],
+      },
+    ],
+  },
+  {
+    id: 'adaptive',
+    title: 'Adaptive DBS',
+    summary: 'Close the loop: let sensed beta decide when to stimulate, and tune the controller.',
+    lessons: [
+      {
+        id: 'close-the-loop',
+        title: 'Close the loop',
+        intro: 'Instead of stimulating all the time, let the patient’s own beta decide when stimulation is needed.',
+        explain: [
+          'Adaptive (closed-loop) DBS measures a biomarker and adjusts stimulation in response. Here the biomarker is beta amplitude, sensed through the sandwich pair around the stimulating contact. A single-threshold controller ramps the amplitude up while sensed beta is above a threshold and down while it is below.',
+          'The aim is similar benefit with less stimulation: fewer side effects and less battery use. Studies have reported clinical benefit with substantially less stimulation than continuous DBS, and sensing-based adaptive DBS has recently entered clinical use. Which biomarker and controller work best for whom is still being researched.',
+        ],
+        steps: [
+          'Keep medication OFF and the patient at rest. Select L 0–2 and choose Capture OFF in the spectrum panel.',
+          'In the Adaptive DBS panel, switch adaptive stimulation on with left contact 1. Watch the delivered amplitude follow the sensed beta estimate.',
+          'Compare the mean amplitude and the beta power with continuous stimulation at the maximum amplitude.',
+        ],
+        tools: ['adaptive', 'spectrum'],
+        task: 'The threshold is set below the lowest value the beta estimate ever reaches. How will the adaptive system behave?',
+        options: [
+          'It will never stimulate',
+          'It will stimulate continuously at its maximum amplitude, like conventional DBS',
+          'It will stimulate only during movement',
+        ],
+        correct: 1,
+        feedback: 'If sensed beta is always above threshold, the controller ramps up and stays at its maximum, which is continuous DBS with extra steps.',
+        hint: 'Compare the estimate with the threshold at every moment. Which way does the amplitude ramp?',
+        sources: [read.little, read.burstsAdbs, read.neumann],
+      },
+      {
+        id: 'tune-adaptive',
+        title: 'Tune the controller',
+        intro: 'A controller is only as good as its sensing band, threshold, smoothing and ramp.',
+        explain: [
+          'The sensing band should sit on the patient’s own beta peak. A band placed off the peak senses mostly background, so the controller rarely triggers. The threshold sets how much beta is tolerated before stimulation rises.',
+          'Smoothing trades noise for speed: a short time constant follows individual bursts, a long one follows slower changes such as medication cycles. The ramp speed limits how quickly amplitude can change, which matters for comfort as well as responsiveness.',
+        ],
+        steps: [
+          'Find the left beta peak in the spectrum with stimulation off, then set the sensing centre to it.',
+          'Set the threshold near the middle of the estimate’s usual range, a fast ramp (6–12 mA/s) and short smoothing (0.1–0.25 s), with a maximum of 3 mA.',
+          'Let it run for 20 seconds without changing settings, then compare beta and mean amplitude with your OFF capture.',
+        ],
+        tools: ['adaptive', 'spectrum'],
+        task: 'The sensing band is centred at 30 Hz but the patient’s beta peak is at 19 Hz. What is the likely result?',
+        options: [
+          'The controller rarely stimulates because the band senses mostly background activity',
+          'The controller stimulates harder because 30 Hz is a higher frequency',
+          'The stimulation frequency changes to 30 Hz',
+        ],
+        correct: 0,
+        feedback: 'An off-peak band carries little of the patient’s beta, so the estimate stays low and rarely crosses the threshold.',
+        hint: 'What does the band-pass filter pass through to the estimate when the beta peak lies outside it?',
+        sources: [read.little, read.arlotti, read.neumann],
       },
     ],
   },

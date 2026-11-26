@@ -1,4 +1,4 @@
-import { FS, type Config } from '../sim/model'
+import { FS, LANE, type Config } from '../sim/model'
 import { rowNamed, type Montage, type Row, type SignalStore } from '../dsp/store'
 import { BETA, bandPower, peak, welch } from '../dsp/spectrum'
 import { analyzeBursts } from '../dsp/bursts'
@@ -28,6 +28,8 @@ export interface Exercise {
 }
 
 export const CAPTURE_SECONDS = 20
+export const ADAPTIVE_BETA = 0.65
+export const ADAPTIVE_ENERGY = 0.4
 const SETTLE = 12 * FS
 
 const resting = (c: Config) => c.movement === 'rest' && !c.stim.on
@@ -89,6 +91,16 @@ export const exercises: Record<ModuleId, Exercise> = {
     unit: 'ms',
     takeaway: 'With a fixed baseline threshold, levodopa’s effect shows up as shorter bursts.',
   },
+  adaptive: {
+    steps: [
+      'Capture an OFF window (medication OFF, at rest, stimulation off) on L 0–2.',
+      'Run adaptive DBS on left contact 1 with a maximum of at least 2.5 mA. Tune it, then leave the settings unchanged for 20 seconds.',
+      `Goal: left beta at most ${ADAPTIVE_BETA * 100}% of your OFF capture, with a mean amplitude at most ${ADAPTIVE_ENERGY * 100}% of the maximum.`,
+    ],
+    question: 'What mean left amplitude did your controller deliver over the last 20 seconds?',
+    unit: 'mA',
+    takeaway: 'You tuned a closed-loop controller to suppress beta while delivering a fraction of continuous stimulation.',
+  },
   stim: {
     steps: [
       'Set Montage to Adjacent pairs. Turn stimulation on at left contact 1, at least 1.5 mA, 130 Hz.',
@@ -100,6 +112,12 @@ export const exercises: Record<ModuleId, Exercise> = {
   },
 }
 
+/** Mean delivered amplitude (mA) on the left lead over [from, to). */
+export function meanDelivered(store: SignalStore, from: number, to: number) {
+  let sum = 0
+  for (let i = from; i < to; i++) sum += store.at(i, LANE.stimL)
+  return sum / Math.max(1, to - from)
+}
 const near = (value: number, target: number, tolerance: number) =>
   Number.isFinite(value) && Math.abs(value - target) <= tolerance
 const numeric = (answer: string) => (answer.trim() === '' ? NaN : Number(answer))
@@ -142,6 +160,33 @@ export function grade(module: ModuleId, ctx: PracticalContext, answer: string): 
       const target = result.on.meanDurationMs
       if (!near(numeric(answer), target, Math.max(15, 0.12 * target)))
         return 'Use the fixed OFF threshold, not the ON window’s own threshold, and read the ON mean duration.'
+      return
+    }
+    case 'adaptive': {
+      const off = captures.off
+      if (!off || !store.has(off.start) || !store.has(off.end - 1)) return 'Capture an OFF window first, with stimulation off and the patient at rest.'
+      if (!store.spans(off.start, off.end, (c) => c.medication === 'off' && resting(c))) return 'The OFF capture must contain only medication OFF, at rest, with stimulation off.'
+      const from = viewEnd - CAPTURE_SECONDS * FS
+      const settings = JSON.stringify(store.configAt(viewEnd - 1).adaptive)
+      const ok = (c: Config) =>
+        c.medication === 'off' &&
+        c.movement === 'rest' &&
+        c.stim.on &&
+        c.stim.contact.L === 1 &&
+        c.adaptive.on &&
+        c.adaptive.max >= 2.5 &&
+        JSON.stringify(c.adaptive) === settings
+      if (!store.spans(from, viewEnd, ok))
+        return 'The last 20 seconds must run adaptive DBS on left contact 1 (maximum at least 2.5 mA), medication OFF, at rest, with no setting changes.'
+      const row = rowNamed('L 0–2')!
+      const ratio = betaPower(store, from, viewEnd, row) / betaPower(store, off.start, off.end, row)
+      const max = store.configAt(viewEnd - 1).adaptive.max
+      const mean = meanDelivered(store, from, viewEnd)
+      if (ratio > ADAPTIVE_BETA)
+        return `Beta is ${(ratio * 100).toFixed(0)}% of OFF. Centre the sensing band on the beta peak, lower the threshold or speed up the ramp.`
+      if (mean > ADAPTIVE_ENERGY * max)
+        return `Mean amplitude is ${((mean / max) * 100).toFixed(0)}% of the maximum. Raise the threshold so stimulation pauses between bursts.`
+      if (!near(numeric(answer), mean, 0.1)) return 'Read the mean delivered amplitude in the Adaptive DBS panel and enter it in mA.'
       return
     }
     case 'stim': {

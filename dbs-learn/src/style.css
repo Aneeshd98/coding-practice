@@ -1594,3 +1594,7 @@ details.reading ul {
     display: none;
   }
 }
+
+.fields + .chart {
+  margin-top: 16px;
+}

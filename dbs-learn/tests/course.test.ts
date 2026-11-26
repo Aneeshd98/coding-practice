@@ -18,7 +18,7 @@ function session(seed = 7) {
 }
 
 test('course content is complete and every answer index is valid', () => {
-  assert.equal(modules.length, 4)
+  assert.equal(modules.length, 5)
   assert.equal(new Set(lessons.map((l) => l.id)).size, lessons.length)
   for (const l of lessons) {
     assert.ok(l.correct >= 0 && l.correct < l.options.length, l.id)
@@ -72,4 +72,23 @@ test('stimulation practical uses the measured alias and the required settings', 
   assert.ok(grade('stim', ctx(), '130'))
   run(6, { stim: { contact: { L: 3 } } })
   assert.match(grade('stim', ctx(), '120')!, /contact 1/)
+})
+
+test('the adaptive practical requires real suppression, energy savings and stable settings', async () => {
+  const { meanDelivered } = await import('../src/course/practicals')
+  const { store, run } = session()
+  run(25)
+  const captures: Captures = { off: { start: store.end - 20 * FS, end: store.end, row: 'L 0–2' } }
+  const ctx = () => ({ store, viewEnd: store.end, montage: 'Sandwich pairs' as const, captures })
+  // Threshold too low: suppression without savings.
+  run(25, { stim: { on: true }, adaptive: { on: true, centre: 19.4, threshold: 0.1, max: 3 } })
+  assert.match(grade('adaptive', ctx(), '3')!, /Raise the threshold/)
+  // Tuned: passes only with the measured mean amplitude.
+  run(25, { adaptive: { threshold: 0.7, ramp: 6, smoothing: 0.25 } })
+  const mean = meanDelivered(store, store.end - 20 * FS, store.end)
+  assert.equal(grade('adaptive', ctx(), mean.toFixed(2)), undefined)
+  assert.ok(grade('adaptive', ctx(), (mean + 0.5).toFixed(2)))
+  // Changing a setting inside the window invalidates it.
+  run(5, { adaptive: { threshold: 0.72 } })
+  assert.match(grade('adaptive', ctx(), mean.toFixed(2))!, /no setting changes/)
 })

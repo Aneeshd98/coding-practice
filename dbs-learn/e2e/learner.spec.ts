@@ -30,7 +30,7 @@ test('a learner streams data, answers a checkpoint and completes the first lesso
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Why record between contacts')
   await page.reload()
   await page.getByRole('link', { name: 'Course map' }).click()
-  await expect(page.getByRole('img', { name: '1 of 10 lessons complete' })).toBeVisible()
+  await expect(page.getByRole('img', { name: '1 of 12 lessons complete' })).toBeVisible()
 })
 
 test('the sensing practical is graded from the live recording', async ({ page }) => {
@@ -69,4 +69,13 @@ test('stimulation and burst tools render, and the narrow layout does not scroll 
   await expect(page.getByRole('heading', { name: /Beta bursts/ })).toBeVisible()
   await page.setViewportSize({ width: 375, height: 800 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
+
+test('adaptive DBS follows sensed beta and reports its energy use', async ({ page }) => {
+  await page.goto('./#/lesson/close-the-loop')
+  await page.getByRole('tab', { name: 'Experiment' }).click()
+  await page.getByRole('switch', { name: 'Adaptive stimulation' }).check()
+  await expect(page.locator('.patient .status-chip.stim')).toContainText('Adaptive · up to 3 mA')
+  await page.getByRole('slider', { name: 'Threshold' }).fill('0.2')
+  await expect(page.locator('.metric.stim').first()).toContainText(/[1-3]\.\d\d/, { timeout: 15_000 })
 })
