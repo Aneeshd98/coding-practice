@@ -245,3 +245,29 @@ test('dyskinesia gamma appears only with levodopa ON and entrains to half the st
   const locked = gammaPeak({ medication: 'on', dyskinesia: true, stim: { on: true, contact: { L: 1 }, amplitude: 2 } })
   assert.ok(locked.clear && Math.abs(locked.hz - 65) < 0.8, String(locked.hz))
 })
+
+test('dystonia has a levodopa-insensitive pallidal theta peak; tremor activity follows posture on the opposite side', async () => {
+  const { prominent } = await import('../src/dsp/spectrum')
+  const s = makeSubject(7)
+  const low = (patch: ConfigPatch, name = 'L 0–2') => {
+    const st = record(patch).store
+    const sp = welch(series(st, name), 512)
+    const p = peak(sp, 3, 12)
+    return { hz: p.hz, clear: prominent(sp, p, 3, 12), power: bandPower(sp, 3, 12), store: st }
+  }
+  const dyst = low({ disorder: 'dystonia' })
+  assert.ok(dyst.clear && Math.abs(dyst.hz - s.thetaHz.L) < 0.6, String(dyst.hz))
+  assert.ok(Math.abs(low({ disorder: 'dystonia', medication: 'on' }).power - dyst.power) < 0.05 * dyst.power, 'levodopa has no effect')
+  assert.ok(low({ disorder: 'dystonia', stim: { on: true } }).power < 0.8 * dyst.power, 'stimulation reduces it')
+  const rest = low({ disorder: 'tremor' }),
+    posture = low({ disorder: 'tremor', movement: 'right' })
+  assert.ok(posture.clear && Math.abs(posture.hz - s.tremorHz) < 0.6, String(posture.hz))
+  assert.ok(posture.power > 4 * rest.power, 'posture brings the tremor on')
+  assert.ok(posture.power > 2 * low({ disorder: 'tremor', movement: 'right' }, 'R 0–2').power, 'contralateral VIM dominates')
+  const accel = (st: SignalStore) => {
+    let t = 0
+    for (let i = st.end - 10 * FS; i < st.end; i++) t += st.at(i, LANE.accel) ** 2
+    return Math.sqrt(t / (10 * FS))
+  }
+  assert.ok(accel(low({ disorder: 'tremor', movement: 'right', stim: { on: true } }).store) < 0.7 * accel(posture.store), 'stimulation reduces hand tremor')
+})

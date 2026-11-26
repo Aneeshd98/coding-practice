@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { AudioWaveform, CalendarClock, Camera, Gauge, X, Hand, HeartPulse, Minus, Plus, SlidersVertical, Pill, RefreshCw, Sparkles, Timer, UserRound, Waves, Zap } from 'lucide-react'
+import { Activity, AudioWaveform, CalendarClock, Stethoscope, Camera, Gauge, X, Hand, HeartPulse, Minus, Plus, SlidersVertical, Pill, RefreshCw, Sparkles, Timer, UserRound, Waves, Zap } from 'lucide-react'
 import { useLab, useTick } from '../app/lab'
-import { FS, LANE, SIDES, type Movement } from '../sim/model'
+import { DISORDERS, FS, LANE, SIDES, type Disorder, type Movement } from '../sim/model'
 import { rowNamed } from '../dsp/store'
 import { BETA, bandPower, peak, prominent, welch } from '../dsp/spectrum'
 import { analyzeBursts } from '../dsp/bursts'
@@ -44,6 +44,19 @@ export function PatientBar() {
           <small>Bilateral STN · 4-contact leads</small>
         </span>
       </div>
+      <label className="control">
+        <span className="control-label">
+          <Stethoscope size={14} /> Condition
+        </span>
+        <select aria-label="Condition" value={now.disorder} onChange={(e) => l.change({ disorder: e.target.value as Disorder }, 'Condition: ' + e.target.value)}>
+          {DISORDERS.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.label} · {d.target}
+            </option>
+          ))}
+        </select>
+      </label>
+      {now.disorder === 'pd' && (
       <div className="control">
         <span className="control-label">
           <Pill size={14} /> Levodopa
@@ -56,16 +69,17 @@ export function PatientBar() {
           ))}
         </div>
       </div>
+      )}
       <div className="control">
         <span className="control-label">
-          <Hand size={14} /> Movement
+          <Hand size={14} /> {now.disorder === 'tremor' ? 'Posture' : 'Movement'}
         </span>
         <div className="seg" role="group" aria-label="Movement">
           {(
             [
               ['rest', 'Rest'],
-              ['left', 'Left hand'],
-              ['right', 'Right hand'],
+              ['left', now.disorder === 'tremor' ? 'Hold left arm' : 'Left hand'],
+              ['right', now.disorder === 'tremor' ? 'Hold right arm' : 'Right hand'],
             ] as [Movement, string][]
           ).map(([m, label]) => (
             <button key={m} aria-pressed={now.movement === m} disabled={!!l.protocol} onClick={() => l.change({ movement: m }, m === 'rest' ? 'Rest' : 'Move ' + label.toLowerCase())}>
@@ -74,6 +88,7 @@ export function PatientBar() {
           ))}
         </div>
       </div>
+      {now.disorder === 'pd' && (
       <button
         className={'status-chip toggle' + (now.dyskinesia ? ' on' : '')}
         aria-pressed={now.dyskinesia}
@@ -82,6 +97,7 @@ export function PatientBar() {
       >
         Dyskinesia {now.dyskinesia ? (now.medication === 'on' ? 'on' : 'on · needs levodopa') : 'off'}
       </button>
+      )}
       <span className={'status-chip' + (now.stim.on ? ' stim' : '')}>
         <Zap size={13} />
         {!now.stim.on ? 'Stimulation off' : now.adaptive.on ? `Adaptive · up to ${now.adaptive.max} mA` : `Stim ${now.stim.amplitude.toFixed(1)} mA · ${now.stim.frequency} Hz`}
@@ -179,6 +195,10 @@ export function SpectrumPanel({ upTo = 60 }: { upTo?: number }) {
   const markers = []
   if (ready && p.local) markers.push({ x: p.hz, y: p.value, label: `β peak ${p.hz.toFixed(1)} Hz`, color: color.beta })
   if (ready && max > 60 && alias.local) markers.push({ x: alias.hz, y: alias.value, label: `${alias.hz.toFixed(1)} Hz`, color: color.stim })
+  const disorder = l.config.disorder
+  const lowRaw = peak(sp, 3, 12)
+  const low = { ...lowRaw, local: prominent(sp, lowRaw, 3, 12) }
+  if (ready && disorder !== 'pd' && low.local) markers.push({ x: low.hz, y: low.value, label: `${disorder === 'tremor' ? 'tremor' : 'θ/α'} ${low.hz.toFixed(1)} Hz`, color: color.sense })
   const gammaRaw = peak(sp, 55, 95)
   if (ready && max > 60 && prominent(sp, gammaRaw, 40, 100, 4)) markers.push({ x: gammaRaw.hz, y: gammaRaw.value, label: `γ ${gammaRaw.hz.toFixed(1)} Hz`, color: color.primary })
   return (
@@ -210,6 +230,15 @@ export function SpectrumPanel({ upTo = 60 }: { upTo?: number }) {
               yLabel="Power spectral density (µV²/Hz)"
             />
             <div className="metrics">
+              {disorder !== 'pd' && (
+                <div className="metric">
+                  <small>Peak 3–12 Hz</small>
+                  <b>
+                    {low.local ? low.hz.toFixed(1) : '—'}
+                    <em>{low.local ? 'Hz' : 'no clear peak'}</em>
+                  </b>
+                </div>
+              )}
               <div className="metric beta">
                 <small>Beta peak</small>
                 <b>
@@ -813,6 +842,52 @@ export function ChronicPanel() {
           </div>
         </div>
         <p className="note">High beta: above 75% of the untreated daytime level while awake. Each dose takes effect in about 30 minutes, peaks near 1 hour and wanes over about 3 hours. Teaching model, not dosing advice.</p>
+      </div>
+    </div>
+  )
+}
+
+export function TremorPanel() {
+  const l = useLab()
+  useTick(l.signals, 500)
+  const end = l.viewEnd(),
+    n = Math.max(0, Math.min(4 * FS, end - l.signals.start))
+  const acc = Float64Array.from({ length: n }, (_, i) => l.signals.at(end - n + i, LANE.accel))
+  const long = l.signals.series(end, 8 * FS, rowNamed('L 0–2')!)
+  const span = Math.max(0, Math.min(8 * FS, end - l.signals.start))
+  const accLong = Float64Array.from({ length: span }, (_, i) => l.signals.at(end - span + i, LANE.accel))
+  const lfp = long.length >= 512 ? peak(welch(long, 512), 3, 12) : null
+  const hand = accLong.length >= 512 ? peak(welch(accLong, 512), 3, 12) : null
+  const rms = Math.sqrt(acc.reduce((a, v) => a + v * v, 0) / Math.max(1, acc.length))
+  return (
+    <div className="tool">
+      <ToolHead icon={<Activity size={15} />} tone="sense" title="Tremor · right-hand accelerometer" />
+      <div className="tool-body">
+        <Chart series={[{ name: 'accelerometer', y: acc, color: color.sense, width: 1.5 }]} x0={-n / FS} x1={0} zero xLabel="Seconds before the view edge" yLabel="Right-hand acceleration (milli-g)" height={140} unit=" s" />
+        <div className="metrics">
+          <div className="metric">
+            <small>Tremor amplitude</small>
+            <b>
+              {rms.toFixed(0)}
+              <em>mg RMS</em>
+            </b>
+          </div>
+          <div className="metric">
+            <small>Hand tremor frequency</small>
+            <b>
+              {hand && rms > 3 ? hand.hz.toFixed(1) : '—'}
+              <em>Hz</em>
+            </b>
+          </div>
+          <div className="metric">
+            <small>Left VIM (L 0–2) peak 3–12 Hz</small>
+            <b>
+              {lfp ? lfp.hz.toFixed(1) : '—'}
+              <em>Hz</em>
+            </b>
+          </div>
+        </div>
+        <p className="note">The accelerometer is on the right hand, whose tremor is driven by the left thalamus. Hold the right arm out to bring the tremor on.</p>
       </div>
     </div>
   )

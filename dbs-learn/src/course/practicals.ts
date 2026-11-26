@@ -106,6 +106,15 @@ export const exercises: Record<ModuleId, Exercise> = {
     unit: 'mA',
     takeaway: 'You tuned a closed-loop controller to suppress beta while delivering a fraction of continuous stimulation.',
   },
+  beyond: {
+    steps: [
+      'With the essential tremor patient (this lesson sets it), hold the right arm out and keep stimulation off for at least 8 seconds.',
+      'Read the 3–12 Hz peak of L 0–2 in the spectrum or the tremor panel.',
+    ],
+    question: 'At what frequency is the tremor-related activity in the left VIM?',
+    unit: 'Hz',
+    takeaway: 'You measured thalamic tremor activity contralateral to the tremoring hand.',
+  },
   programming: {
     steps: [
       'In the Monopolar review panel, keep the pulse width at 60 µs. For each left contact, raise the amplitude until rigidity is at least half relieved and record the benefit threshold.',
@@ -202,6 +211,14 @@ export function grade(module: ModuleId, ctx: PracticalContext, answer: string): 
       if (mean > ADAPTIVE_ENERGY * max)
         return `Mean amplitude is ${((mean / max) * 100).toFixed(0)}% of the maximum. Raise the threshold so stimulation pauses between bursts.`
       if (!near(numeric(answer), mean, 0.1)) return 'Read the mean delivered amplitude in the Adaptive DBS panel and enter it in mA.'
+      return
+    }
+    case 'beyond': {
+      const from = viewEnd - 8 * FS
+      if (!store.spans(from, viewEnd, (c) => c.disorder === 'tremor' && c.movement === 'right' && !c.stim.on))
+        return 'The last 8 seconds must be the essential tremor patient holding the right arm out, with stimulation off.'
+      const measured = peak(welch(store.range(from, viewEnd, rowNamed('L 0–2')!), 512), 3, 12).hz
+      if (!near(numeric(answer), measured, 0.5)) return 'Read the 3–12 Hz peak of L 0–2 (left VIM) while the right arm is held out.'
       return
     }
     case 'programming': {

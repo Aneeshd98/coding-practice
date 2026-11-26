@@ -30,7 +30,7 @@ test('a learner streams data, answers a checkpoint and completes the first lesso
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Why record between contacts')
   await page.reload()
   await page.getByRole('link', { name: 'Course map' }).click()
-  await expect(page.getByRole('img', { name: '1 of 16 lessons complete' })).toBeVisible()
+  await expect(page.getByRole('img', { name: '1 of 18 lessons complete' })).toBeVisible()
 })
 
 test('the sensing practical is graded from the live recording', async ({ page }) => {

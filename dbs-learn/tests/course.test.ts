@@ -18,7 +18,7 @@ function session(seed = 7) {
 }
 
 test('course content is complete and every answer index is valid', () => {
-  assert.equal(modules.length, 6)
+  assert.equal(modules.length, 7)
   assert.equal(new Set(lessons.map((l) => l.id)).size, lessons.length)
   for (const l of lessons) {
     assert.ok(l.correct >= 0 && l.correct < l.options.length, l.id)
@@ -118,4 +118,16 @@ test('the programming practical needs a complete, accurate review and the widest
   assert.ok(grade('programming', ctx(truthful), best === '0' ? '3' : '0'))
   const sloppy = { ...truthful, 1: { ...truthful[1], benefit: (truthful[1].benefit ?? 2) + 1 } }
   assert.match(grade('programming', ctx(sloppy), best)!, /Re-test contact 1/)
+})
+
+test('the tremor practical measures the contralateral VIM peak during posture', async () => {
+  const { peak, welch } = await import('../src/dsp/spectrum')
+  const { store, run } = session()
+  run(10, { disorder: 'tremor' })
+  const ctx = () => ({ store, viewEnd: store.end, montage: 'Sandwich pairs' as const, captures: {} })
+  assert.match(grade('beyond', ctx(), '5.5')!, /holding the right arm/)
+  run(10, { movement: 'right' })
+  const hz = peak(welch(store.range(store.end - 8 * FS, store.end, rowNamed('L 0–2')!), 512), 3, 12).hz
+  assert.equal(grade('beyond', ctx(), hz.toFixed(1)), undefined)
+  assert.ok(grade('beyond', ctx(), (hz + 2).toFixed(1)))
 })

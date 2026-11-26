@@ -1,5 +1,5 @@
-export type Tool = 'lead' | 'sensing' | 'spectrum' | 'bursts' | 'movement' | 'stim' | 'adaptive' | 'review' | 'chronic'
-export type ModuleId = 'sensing' | 'beta' | 'bursts' | 'stim' | 'programming' | 'adaptive'
+export type Tool = 'lead' | 'sensing' | 'spectrum' | 'bursts' | 'movement' | 'stim' | 'adaptive' | 'review' | 'chronic' | 'tremor'
+export type ModuleId = 'sensing' | 'beta' | 'bursts' | 'stim' | 'programming' | 'adaptive' | 'beyond'
 
 export interface Reading {
   title: string
@@ -20,6 +20,8 @@ export interface Lesson {
   sources: Reading[]
   /** The module practical sits on this lesson (default: the last). */
   practical?: boolean
+  /** The condition this lesson's virtual patient has (default: Parkinson’s disease). */
+  disorder?: 'pd' | 'dystonia' | 'tremor'
 }
 export interface CourseModule {
   id: ModuleId
@@ -50,6 +52,9 @@ const read = {
   volkmann: pubmed('Introduction to the programming of deep brain stimulators'),
   shortPulse: pubmed('Short pulse width widens the therapeutic window of subthalamic neurostimulation'),
   vta: pubmed('Patient-specific analysis of the volume of tissue activated during deep brain stimulation'),
+  dystonia: pubmed('Pallidal activity in dystonia: oscillatory local field potentials'),
+  dystoniaTheta: pubmed('Theta-alpha oscillations characterize emotional and motor dysfunction in dystonia'),
+  tremor: pubmed('Essential tremor: local field potentials in the thalamus'),
 }
 
 export const modules: CourseModule[] = [
@@ -460,6 +465,61 @@ export const modules: CourseModule[] = [
         feedback: 'An off-peak band carries little of the patient’s beta, so the estimate stays low and rarely crosses the threshold.',
         hint: 'What does the band-pass filter pass through to the estimate when the beta peak lies outside it?',
         sources: [read.little, read.arlotti, read.neumann],
+      },
+    ],
+  },
+  {
+    id: 'beyond',
+    title: 'Beyond Parkinson’s',
+    summary: 'Other disorders, other targets, other biomarkers: pallidal theta in dystonia and thalamic tremor activity.',
+    lessons: [
+      {
+        id: 'dystonia-gpi',
+        title: 'Dystonia and the pallidum',
+        intro: 'In dystonia the lead goes to the internal globus pallidus, and the rhythm to look for is slower.',
+        disorder: 'dystonia',
+        explain: [
+          'Deep brain stimulation for dystonia usually targets the posteroventral internal globus pallidus (GPi). Recordings there in dystonia often show increased low-frequency activity, in the theta and low alpha range (about 4–12 Hz), rather than the parkinsonian beta peak.',
+          'Levodopa does not have the effect it has in Parkinson’s disease, and clinical improvement after GPi stimulation can take weeks to months, so a fast biomarker is especially valuable. The patient here has a pallidal low-frequency peak that stimulation reduces.',
+        ],
+        steps: [
+          'This lesson switches the virtual patient to dystonia: the leads now sit in the GPi. Look at Target view.',
+          'Select L 0–2 and find the 3–12 Hz peak in the spectrum. Switch levodopa on via Free lab and confirm it has no effect here.',
+          'Turn stimulation on at contact 1 and compare the low-frequency peak.',
+        ],
+        tools: ['spectrum', 'stim'],
+        task: 'A GPi recording in a patient with dystonia shows a clear 7 Hz peak and little beta. How should you read it?',
+        options: [
+          'As the low-frequency pallidal activity often reported in dystonia',
+          'As an artifact, because only beta is meaningful in DBS recordings',
+          'As proof that the patient has Parkinson’s disease',
+        ],
+        correct: 0,
+        feedback: 'Biomarkers depend on the disorder and the target. In dystonia, pallidal theta–alpha activity is the commonly reported candidate.',
+        hint: 'Is beta the only oscillation that matters, whatever the disorder?',
+        sources: [read.dystonia, read.dystoniaTheta],
+      },
+      {
+        id: 'tremor-vim',
+        title: 'Tremor and the thalamus',
+        intro: 'For essential tremor the lead targets the thalamus, and the brain rhythm follows the shaking hand.',
+        disorder: 'tremor',
+        explain: [
+          'Essential tremor is commonly treated by stimulating the ventral intermediate nucleus (VIM) of the thalamus. Essential tremor is mostly an action and postural tremor, so it appears when the arms are held out or used, typically at 4–12 Hz.',
+          'Thalamic recordings often contain activity at the tremor frequency, mainly opposite the tremoring hand, and it can be compared with an accelerometer on the hand. Effective stimulation reduces both. Because the tremor comes and goes with posture, tremor-triggered stimulation is an obvious candidate for adaptive DBS.',
+        ],
+        steps: [
+          'This lesson switches the virtual patient to essential tremor: the leads sit in the VIM. Look at Target view.',
+          'Choose Hold right arm in the patient bar. Watch the accelerometer and the L 0–2 spectrum.',
+          'Compare the left and right VIM, then turn stimulation on and watch the tremor amplitude.',
+        ],
+        tools: ['tremor', 'spectrum', 'stim'],
+        task: 'The right arm is held out and an accelerometer shows 5.5 Hz tremor. Where is a matching 5.5 Hz LFP peak most expected?',
+        options: ['Left VIM', 'Right VIM', 'Neither: tremor is purely peripheral'],
+        correct: 0,
+        feedback: 'Each thalamus mainly controls the opposite side of the body, so the left VIM carries the strongest right-hand tremor activity.',
+        hint: 'Which hemisphere controls the right hand?',
+        sources: [read.tremor, read.neumann],
       },
     ],
   },

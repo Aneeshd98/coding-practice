@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { SIDES, type Side } from '../sim/model'
-import { NUCLEI, add as add3, leadGeometry, mirror, nucleus, type LeadGeometry, type Nucleus, type Vec3 } from './anatomy'
+import { NUCLEI, add as add3, leadGeometry, mirror, nucleus, type LeadGeometry, type Nucleus, type Target, type Vec3 } from './anatomy'
 import { PATHWAYS, radius, reached } from '../sim/field'
 
 export type CortexMode = 'glass' | 'solid' | 'hidden'
@@ -14,6 +14,7 @@ export interface SceneState {
   sensing: { side: Side; contacts: number[] } | null
   stimContact: Record<Side, number> | null
   pulseWidth: number
+  target: Target
   cortex: CortexMode
   head: boolean
   view: ViewPreset
@@ -429,7 +430,7 @@ export class BrainScene {
     const previous = this.state
     this.state = state
     this.root.updateMatrixWorld()
-    if (state.border && (force || !previous?.border || previous.border.L !== state.border.L || previous.border.R !== state.border.R)) {
+    if (state.border && (force || !previous?.border || previous.border.L !== state.border.L || previous.border.R !== state.border.R || previous.target !== state.target)) {
       for (const side of SIDES) {
         const old = this.leads[side]
         if (old) {
@@ -438,7 +439,7 @@ export class BrainScene {
             if (o instanceof THREE.Mesh) o.geometry.dispose()
           })
         }
-        this.leads[side] = this.buildLead(leadGeometry(side, state.border[side]))
+        this.leads[side] = this.buildLead(leadGeometry(side, state.border[side], state.target))
       }
     }
     const mode = state.view === 'target' ? 'hidden' : state.cortex
@@ -460,10 +461,15 @@ export class BrainScene {
         m.material.emissive.copy(stim ? STIM : sensing ? SENSE : new THREE.Color(0))
         m.material.emissiveIntensity = stim ? 0.9 : sensing ? 0.75 : 0
       })
-      const stn = this.nuclei.get(side + 'stn')!
-      stn.material.uniforms.split.value = state.revealed ? 1 : 0
-      stn.material.uniforms.planePoint.value.copy(this.world(lead.geometry.edge))
-      stn.material.uniforms.planeNormal.value.copy(
+      // The generator region lives in the current target; reset the others.
+      for (const id of ['stn', 'gpi', 'vim']) {
+        const u = this.nuclei.get(side + id)!.material.uniforms
+        u.split.value = id === state.target && state.revealed ? 1 : 0
+        if (id !== state.target) u.glow.value = 0
+      }
+      const focus = this.nuclei.get(side + state.target)!
+      focus.material.uniforms.planePoint.value.copy(this.world(lead.geometry.edge))
+      focus.material.uniforms.planeNormal.value.copy(
         new THREE.Vector3(...lead.geometry.direction).transformDirection(this.root.matrixWorld),
       )
       // Each view hides whatever would occlude what it is for.
@@ -471,17 +477,20 @@ export class BrainScene {
         const mesh = this.nuclei.get(side + n.id)!
         let visible = true,
           opacity = 0.9
+        const near: Record<Target, string[]> = { stn: ['stn', 'sn', 'rn'], gpi: ['gpi', 'gpe'], vim: ['vim', 'stn'] }
         if (target) {
-          visible = side === state.targetSide && ['stn', 'sn', 'rn'].includes(n.id)
-          opacity = n.id === 'stn' ? 0.5 : 0.45
+          visible = side === state.targetSide && near[state.target].includes(n.id)
+          opacity = n.id === state.target ? 0.5 : 0.4
         } else if (state.view === 'sagittal') {
           visible = side === 'L' && !['putamen', 'gpe'].includes(n.id)
-          opacity = n.id === 'stn' ? 0.9 : 0.7
-        } else if (n.id === 'stn') opacity = 0.85
+          opacity = n.id === state.target ? 0.9 : 0.7
+        } else if (n.id === state.target) opacity = 0.85
+        // The VIM is a region inside the thalamus: show it only when it is the target.
+        if (n.id === 'vim' && state.target !== 'vim') visible = false
         mesh.visible = visible
         mesh.material.uniforms.opacity.value = opacity
       }
-      for (const p of PATHWAYS) this.pathways.get(side + p.id)!.visible = (target && side === state.targetSide) || state.view === 'coronal'
+      for (const p of PATHWAYS) this.pathways.get(side + p.id)!.visible = state.target === 'stn' && ((target && side === state.targetSide) || state.view === 'coronal')
     }
     if (force || !previous || previous.view !== state.view || previous.targetSide !== state.targetSide) this.goTo(state.view, state.targetSide, !previous)
     this.buildLabels()
@@ -496,23 +505,27 @@ export class BrainScene {
       if (s.view === 'target') {
         const side = s.targetSide,
           lead = this.leads[side]
-        add('stn', (side === 'L' ? 'Left' : 'Right') + ' STN', 'nucleus', add3(mirror(nucleus('stn').centre, side), mirror([4, -4, -1], side)), side)
-        add('sn', 'Substantia nigra', 'nucleus', mirror(nucleus('sn').centre, side), side)
-        add('rn', 'Red nucleus', 'nucleus', mirror(nucleus('rn').centre, side), side)
-        add('ic', 'Internal capsule', 'nucleus', mirror([17.6, -11, -1], side), side)
-        add('oc', 'Oculomotor fibres', 'nucleus', mirror([10.3, -15.2, -9.5], side), side)
+        const name = (side === 'L' ? 'Left ' : 'Right ') + nucleus(s.target).short
+        add(s.target, name, 'nucleus', add3(mirror(nucleus(s.target).centre, side), mirror([4, -4, -1], side)), side)
+        if (s.target === 'stn') {
+          add('sn', 'Substantia nigra', 'nucleus', mirror(nucleus('sn').centre, side), side)
+          add('rn', 'Red nucleus', 'nucleus', mirror(nucleus('rn').centre, side), side)
+          add('ic', 'Internal capsule', 'nucleus', mirror([17.6, -11, -1], side), side)
+          add('oc', 'Oculomotor fibres', 'nucleus', mirror([10.3, -15.2, -9.5], side), side)
+        } else if (s.target === 'gpi') add('gpe', 'GPe', 'nucleus', mirror(nucleus('gpe').centre, side), side)
+        else add('stnv', 'STN', 'nucleus', mirror(nucleus('stn').centre, side), side)
         if (lead) {
           lead.geometry.contacts.forEach((c, i) => add('c' + i, String(i), 'contact', c, side))
           if (s.revealed) add('edge', 'β edge', 'edge', lead.geometry.edge, side)
         }
       } else {
         if (s.view !== 'sagittal') {
-          for (const side of SIDES) add('stn' + side, (side === 'L' ? 'Left' : 'Right') + ' STN', 'nucleus', mirror(nucleus('stn').centre, side), side)
-          add('gpi', 'GPi', 'nucleus', mirror(nucleus('gpi').centre, 'R'), 'R')
+          for (const side of SIDES) add('stn' + side, (side === 'L' ? 'Left ' : 'Right ') + nucleus(s.target).short, 'nucleus', mirror(nucleus(s.target).centre, side), side)
+          if (s.target !== 'gpi') add('gpi', 'GPi', 'nucleus', mirror(nucleus('gpi').centre, 'R'), 'R')
           add('put', 'Putamen', 'nucleus', mirror(nucleus('putamen').centre, 'R'), 'R')
           add('thal', 'Thalamus', 'nucleus', mirror(nucleus('thalamus').centre, 'L'), 'L')
         } else {
-          add('stnL', 'STN', 'nucleus', mirror(nucleus('stn').centre, 'L'), 'L')
+          add('stnL', nucleus(s.target).short, 'nucleus', mirror(nucleus(s.target).centre, 'L'), 'L')
           add('thal', 'Thalamus', 'nucleus', mirror(nucleus('thalamus').centre, 'L'), 'L')
           add('cd', 'Caudate', 'nucleus', mirror([12, 15, 9], 'L'), 'L')
           add('rn', 'Red nucleus', 'nucleus', mirror(nucleus('rn').centre, 'L'), 'L')
@@ -622,7 +635,7 @@ export class BrainScene {
     if (slow || moving || this.dirty) {
       const live = this.live()
       for (const side of SIDES) {
-        const stn = this.nuclei.get(side + 'stn')!
+        const stn = this.nuclei.get(side + (this.state?.target ?? 'stn'))!
         const level = Math.min(1.2, live.beta[side] / 1.1)
         const glow = stn.material.uniforms.glow
         const next = glow.value + (level - glow.value) * 0.45

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Brain, Crosshair, Eye, EyeOff, Maximize2, Minimize2, RotateCcw, Tag } from 'lucide-react'
 import { useLab, useTick } from '../app/lab'
-import { FS, LANE, type Side } from '../sim/model'
+import { FS, LANE, TARGET_OF, type Side } from '../sim/model'
 import { rowNamed } from '../dsp/store'
 import { BrainScene, type CortexMode, type Label, type ViewPreset } from '../three/BrainScene'
 import { LeadSchematic } from './LeadSchematic'
@@ -89,6 +89,7 @@ export function BrainPanel() {
       sensing: focus ? { side: focus.side, contacts: [focus.a % 4, ...(focus.b < 0 ? [] : [focus.b % 4])] } : null,
       stimContact: delivered.stim.on ? delivered.stim.contact : null,
       pulseWidth: delivered.stim.pulseWidth ?? 60,
+      target: TARGET_OF[l.config.disorder],
       cortex,
       head,
       view,
@@ -164,7 +165,7 @@ export function BrainPanel() {
             <div className="vp-bottom">
               <div className="legend3d">
                 <span>
-                  <i className="sw stn" /> STN · glows with beta
+                  <i className="sw stn" /> {({ stn: 'STN', gpi: 'GPi', vim: 'VIM' } as const)[TARGET_OF[l.config.disorder]]} · glows with {l.config.disorder === 'pd' ? 'beta' : l.config.disorder === 'tremor' ? 'tremor rhythm' : 'θ/α rhythm'}
                 </span>
                 <span>
                   <i className="sw sense" /> sensing pair
