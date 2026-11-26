@@ -210,3 +210,99 @@ test('a noise wiggle is not a beta peak, a real one is, and a clipped artifact c
   const fake = peak(clipped, 13, 35)
   assert.ok(prominent(clipped, fake, 13, 35) && Math.abs(fake.hz - 20) < 0.6, String(fake.hz))
 })
+
+test('the adaptive controller ramps with sensed beta and saves energy against continuous stimulation', () => {
+  const mean = (s: SignalStore, lane: number) => {
+    let t = 0
+    for (let i = s.end - 20 * FS; i < s.end; i++) t += s.at(i, lane)
+    return t / (20 * FS)
+  }
+  const adaptive = (extra: object) => record({ stim: { on: true }, adaptive: { on: true, centre: 19.4, max: 3, ...extra } }).store
+  // A threshold below the estimate's floor behaves like continuous stimulation; one above its ceiling never stimulates.
+  assert.ok(mean(adaptive({ threshold: 0.1 }), LANE.stimL) > 2.9)
+  assert.ok(mean(adaptive({ threshold: 5 }), LANE.stimL) < 0.05)
+  // A tuned controller suppresses beta with a fraction of the energy.
+  const off = record({}).store
+  const tuned = adaptive({ threshold: 0.7, ramp: 6, smoothing: 0.25 })
+  const ratio = beta(tuned, 'L 0–2') / beta(off, 'L 0–2')
+  assert.ok(ratio < 0.65, 'beta ratio ' + ratio)
+  assert.ok(mean(tuned, LANE.stimL) < 0.4 * 3, 'mean amplitude ' + mean(tuned, LANE.stimL))
+  // A sensing band far from the peak barely triggers.
+  assert.ok(mean(adaptive({ threshold: 0.7, centre: 32 }), LANE.stimL) < mean(tuned, LANE.stimL) / 2)
+})
+
+test('dyskinesia gamma appears only with levodopa ON and entrains to half the stimulation frequency', async () => {
+  const { prominent } = await import('../src/dsp/spectrum')
+  const gammaPeak = (patch: ConfigPatch) => {
+    const sp = welch(series(record(patch).store, 'L 0–2'))
+    const p = peak(sp, 55, 95)
+    return { hz: p.hz, clear: prominent(sp, p, 40, 100, 4) }
+  }
+  assert.equal(gammaPeak({ dyskinesia: true }).clear, false, 'not without levodopa')
+  assert.equal(gammaPeak({ medication: 'on' }).clear, false, 'not without dyskinesia')
+  const free = gammaPeak({ medication: 'on', dyskinesia: true })
+  assert.ok(free.clear && Math.abs(free.hz - makeSubject(7).gammaHz.L) < 1.5, String(free.hz))
+  const locked = gammaPeak({ medication: 'on', dyskinesia: true, stim: { on: true, contact: { L: 1 }, amplitude: 2 } })
+  assert.ok(locked.clear && Math.abs(locked.hz - 65) < 0.8, String(locked.hz))
+})
+
+test('dystonia has a levodopa-insensitive pallidal theta peak; tremor activity follows posture on the opposite side', async () => {
+  const { prominent } = await import('../src/dsp/spectrum')
+  const s = makeSubject(7)
+  const low = (patch: ConfigPatch, name = 'L 0–2') => {
+    const st = record(patch).store
+    const sp = welch(series(st, name), 512)
+    const p = peak(sp, 3, 12)
+    return { hz: p.hz, clear: prominent(sp, p, 3, 12), power: bandPower(sp, 3, 12), store: st }
+  }
+  const dyst = low({ disorder: 'dystonia' })
+  assert.ok(dyst.clear && Math.abs(dyst.hz - s.thetaHz.L) < 0.6, String(dyst.hz))
+  assert.ok(Math.abs(low({ disorder: 'dystonia', medication: 'on' }).power - dyst.power) < 0.05 * dyst.power, 'levodopa has no effect')
+  assert.ok(low({ disorder: 'dystonia', stim: { on: true } }).power < 0.8 * dyst.power, 'stimulation reduces it')
+  const rest = low({ disorder: 'tremor' }),
+    posture = low({ disorder: 'tremor', movement: 'right' })
+  assert.ok(posture.clear && Math.abs(posture.hz - s.tremorHz) < 0.6, String(posture.hz))
+  assert.ok(posture.power > 4 * rest.power, 'posture brings the tremor on')
+  assert.ok(posture.power > 2 * low({ disorder: 'tremor', movement: 'right' }, 'R 0–2').power, 'contralateral VIM dominates')
+  const accel = (st: SignalStore) => {
+    let t = 0
+    for (let i = st.end - 10 * FS; i < st.end; i++) t += st.at(i, LANE.accel) ** 2
+    return Math.sqrt(t / (10 * FS))
+  }
+  assert.ok(accel(low({ disorder: 'tremor', movement: 'right', stim: { on: true } }).store) < 0.7 * accel(posture.store), 'stimulation reduces hand tremor')
+})
+
+test('segments facing the beta generator carry the most directional beta', async () => {
+  const { segmentBeta } = await import('../src/dsp/directional')
+  for (const seed of [7, 11, 23]) {
+    const { g, store } = record({ lead: 'directional' }, 20, seed)
+    for (const side of ['L', 'R'] as const) {
+      const r = segmentBeta(store, side, store.end - 20 * FS, store.end)
+      const truth = g.subject.betaAngle[side]
+      const diff = Math.abs(((r.angle - truth + 540) % 360) - 180)
+      assert.ok(diff < 40, `seed ${seed} ${side}: estimated ${r.angle.toFixed(0)}°, true ${truth}°`)
+    }
+  }
+  // A ring reading on a directional lead is the mean of its three segments.
+  const { store } = record({ lead: 'directional' }, 2)
+  const s = store.end - 1
+  const mean = (segLaneFn: (g: number) => number) => (store.at(s, segLaneFn(0)) + store.at(s, segLaneFn(1)) + store.at(s, segLaneFn(2))) / 3
+  const { segLane } = await import('../src/sim/model')
+  assert.ok(Math.abs(store.at(s, 1) - mean((g) => segLane('L', 1, g))) < 1e-4)
+})
+
+test('the spectrogram shows a rhythm where and when it occurs, relative to each frequency’s median', async () => {
+  const { spectrogram } = await import('../src/dsp/spectrogram')
+  // 8 s of noise, with a 20 Hz rhythm only in the second half.
+  let seed = 3
+  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647 - 0.5) * 2
+  const x = Float64Array.from({ length: 8 * FS }, (_, i) => rand() + (i >= 4 * FS ? 3 * Math.sin((2 * Math.PI * 20 * i) / FS) : 0))
+  const s = spectrogram(x)
+  const k20 = s.freqs.findIndex((f) => Math.abs(f - 20) < 0.6),
+    k40 = s.freqs.findIndex((f) => Math.abs(f - 40) < 0.6)
+  const early = s.columns.filter((_, t) => s.centres[t] < 3.5 * FS),
+    late = s.columns.filter((_, t) => s.centres[t] > 4.6 * FS)
+  const avg = (cols: Float32Array[], k: number) => cols.reduce((a, c) => a + c[k], 0) / cols.length
+  assert.ok(avg(late, k20) - avg(early, k20) > 15, '20 Hz rises by more than 15 dB once the rhythm starts')
+  assert.ok(Math.abs(avg(late, k40) - avg(early, k40)) < 3, '40 Hz stays flat')
+})

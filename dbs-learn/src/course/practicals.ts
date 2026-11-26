@@ -1,4 +1,5 @@
-import { FS, type Config } from '../sim/model'
+import { FS, LANE, makeSubject, type Config } from '../sim/model'
+import { bestContact, thresholds } from '../sim/field'
 import { rowNamed, type Montage, type Row, type SignalStore } from '../dsp/store'
 import { BETA, bandPower, peak, welch } from '../dsp/spectrum'
 import { analyzeBursts } from '../dsp/bursts'
@@ -13,11 +14,15 @@ export interface Captures {
   off?: Capture
   on?: Capture
 }
+/** Thresholds the learner recorded for each left contact during a monopolar review (null: none up to the test limit). */
+export type ReviewLog = Record<number, { benefit?: number | null; side?: number | null; pulseWidth: number }>
 export interface PracticalContext {
   store: SignalStore
   viewEnd: number
   montage: Montage
   captures: Captures
+  review?: ReviewLog
+  seed?: number
 }
 export interface Exercise {
   steps: string[]
@@ -28,6 +33,8 @@ export interface Exercise {
 }
 
 export const CAPTURE_SECONDS = 20
+export const ADAPTIVE_BETA = 0.65
+export const ADAPTIVE_ENERGY = 0.4
 const SETTLE = 12 * FS
 
 const resting = (c: Config) => c.movement === 'rest' && !c.stim.on
@@ -89,6 +96,35 @@ export const exercises: Record<ModuleId, Exercise> = {
     unit: 'ms',
     takeaway: 'With a fixed baseline threshold, levodopa’s effect shows up as shorter bursts.',
   },
+  adaptive: {
+    steps: [
+      'Capture an OFF window (medication OFF, at rest, stimulation off) on L 0–2.',
+      'Run adaptive DBS on left contact 1 with a maximum of at least 2.5 mA. Tune it, then leave the settings unchanged for 20 seconds.',
+      `Goal: left beta at most ${ADAPTIVE_BETA * 100}% of your OFF capture, with a mean amplitude at most ${ADAPTIVE_ENERGY * 100}% of the maximum.`,
+    ],
+    question: 'What mean left amplitude did your controller deliver over the last 20 seconds?',
+    unit: 'mA',
+    takeaway: 'You tuned a closed-loop controller to suppress beta while delivering a fraction of continuous stimulation.',
+  },
+  beyond: {
+    steps: [
+      'With the essential tremor patient (this lesson sets it), hold the right arm out and keep stimulation off for at least 8 seconds.',
+      'Read the 3–12 Hz peak of L 0–2 in the spectrum or the tremor panel.',
+    ],
+    question: 'At what frequency is the tremor-related activity in the left VIM?',
+    unit: 'Hz',
+    takeaway: 'You measured thalamic tremor activity contralateral to the tremoring hand.',
+  },
+  programming: {
+    steps: [
+      'In the Monopolar review panel, keep the pulse width at 60 µs. For each left contact, raise the amplitude until rigidity is at least half relieved and record the benefit threshold.',
+      'Keep raising it until a side effect appears and record that threshold, or record none if nothing appears by 5 mA.',
+      'Compare the therapeutic windows in your table.',
+    ],
+    question: 'Which left contact has the widest therapeutic window?',
+    choices: ['0', '1', '2', '3'],
+    takeaway: 'You ran a monopolar review and chose the contact with the widest margin between benefit and side effects.',
+  },
   stim: {
     steps: [
       'Set Montage to Adjacent pairs. Turn stimulation on at left contact 1, at least 1.5 mA, 130 Hz.',
@@ -100,6 +136,12 @@ export const exercises: Record<ModuleId, Exercise> = {
   },
 }
 
+/** Mean delivered amplitude (mA) on the left lead over [from, to). */
+export function meanDelivered(store: SignalStore, from: number, to: number) {
+  let sum = 0
+  for (let i = from; i < to; i++) sum += store.at(i, LANE.stimL)
+  return sum / Math.max(1, to - from)
+}
 const near = (value: number, target: number, tolerance: number) =>
   Number.isFinite(value) && Math.abs(value - target) <= tolerance
 const numeric = (answer: string) => (answer.trim() === '' ? NaN : Number(answer))
@@ -142,6 +184,61 @@ export function grade(module: ModuleId, ctx: PracticalContext, answer: string): 
       const target = result.on.meanDurationMs
       if (!near(numeric(answer), target, Math.max(15, 0.12 * target)))
         return 'Use the fixed OFF threshold, not the ON window’s own threshold, and read the ON mean duration.'
+      return
+    }
+    case 'adaptive': {
+      const off = captures.off
+      if (!off || !store.has(off.start) || !store.has(off.end - 1)) return 'Capture an OFF window first, with stimulation off and the patient at rest.'
+      if (!store.spans(off.start, off.end, (c) => c.medication === 'off' && resting(c))) return 'The OFF capture must contain only medication OFF, at rest, with stimulation off.'
+      const from = viewEnd - CAPTURE_SECONDS * FS
+      const settings = JSON.stringify(store.configAt(viewEnd - 1).adaptive)
+      const ok = (c: Config) =>
+        c.medication === 'off' &&
+        c.movement === 'rest' &&
+        c.stim.on &&
+        c.stim.contact.L === 1 &&
+        c.adaptive.on &&
+        c.adaptive.max >= 2.5 &&
+        JSON.stringify(c.adaptive) === settings
+      if (!store.spans(from, viewEnd, ok))
+        return 'The last 20 seconds must run adaptive DBS on left contact 1 (maximum at least 2.5 mA), medication OFF, at rest, with no setting changes.'
+      const row = rowNamed('L 0–2')!
+      const ratio = betaPower(store, from, viewEnd, row) / betaPower(store, off.start, off.end, row)
+      const max = store.configAt(viewEnd - 1).adaptive.max
+      const mean = meanDelivered(store, from, viewEnd)
+      if (ratio > ADAPTIVE_BETA)
+        return `Beta is ${(ratio * 100).toFixed(0)}% of OFF. Centre the sensing band on the beta peak, lower the threshold or speed up the ramp.`
+      if (mean > ADAPTIVE_ENERGY * max)
+        return `Mean amplitude is ${((mean / max) * 100).toFixed(0)}% of the maximum. Raise the threshold so stimulation pauses between bursts.`
+      if (!near(numeric(answer), mean, 0.1)) return 'Read the mean delivered amplitude in the Adaptive DBS panel and enter it in mA.'
+      return
+    }
+    case 'beyond': {
+      const from = viewEnd - 8 * FS
+      if (!store.spans(from, viewEnd, (c) => c.disorder === 'tremor' && c.movement === 'right' && !c.stim.on))
+        return 'The last 8 seconds must be the essential tremor patient holding the right arm out, with stimulation off.'
+      const measured = peak(welch(store.range(from, viewEnd, rowNamed('L 0–2')!), 512), 3, 12).hz
+      if (!near(numeric(answer), measured, 0.5)) return 'Read the 3–12 Hz peak of L 0–2 (left VIM) while the right arm is held out.'
+      return
+    }
+    case 'programming': {
+      if (ctx.seed === undefined) return 'The virtual patient is not ready yet.'
+      const subject = makeSubject(ctx.seed),
+        log = ctx.review ?? {}
+      for (let c = 0; c < 4; c++) {
+        const entry = log[c],
+          truth = thresholds(subject, 'L', c, 60)
+        if (!entry || entry.benefit === undefined || entry.side === undefined)
+          return `Record both thresholds for contact ${c} (benefit and side effect) before choosing.`
+        if (entry.pulseWidth !== 60) return `Contact ${c} was tested at ${entry.pulseWidth} µs. Repeat it at 60 µs.`
+        const matches = (mine: number | null, real: number | null) => (mine === null ? real === null : real !== null && Math.abs(mine - real) <= 0.3)
+        if (!matches(entry.benefit, truth.benefit))
+          return `Re-test contact ${c}: its recorded benefit threshold does not match what the patient shows. Step up in 0.1 mA increments.`
+        if (!matches(entry.side, truth.sideEffect))
+          return `Re-test contact ${c}: its recorded side-effect threshold does not match what the patient shows.`
+      }
+      const best = bestContact(subject, 'L', 60)
+      if (answer !== String(best)) return 'Compute each window as side-effect threshold minus benefit threshold (use 5 mA when no side effect appeared) and pick the widest.'
       return
     }
     case 'stim': {

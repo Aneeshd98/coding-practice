@@ -63,8 +63,17 @@ export function peak(s: Spectrum, lo: number, hi: number) {
 
 export const BETA: [number, number] = [13, 35]
 
-/** A peak counts as an oscillation only if it stands well above the band's median level. */
-export function prominent(s: Spectrum, p: { local: boolean; value: number }, lo: number, hi: number, ratio = 2.5) {
-  const band = s.psd.filter((_, k) => s.freqs[k] >= lo && s.freqs[k] <= hi).sort((a, b) => a - b)
-  return p.local && band.length > 2 && p.value > ratio * band[Math.floor(band.length / 2)]
+/**
+ * A peak counts as an oscillation only if it is a local maximum inside the band and rises well
+ * above its own flanks (bins 3–6 Hz either side). Comparing with flanks rather than the band's
+ * median keeps the sloping 1/f background from looking like a peak.
+ */
+export function prominent(s: Spectrum, p: { local: boolean; value: number; hz?: number }, lo: number, hi: number, ratio = 2.5) {
+  if (!p.local || p.hz === undefined || p.hz < lo || p.hz > hi) return false
+  const flank = s.psd.filter((_, k) => {
+    const d = Math.abs(s.freqs[k] - p.hz!)
+    return d >= 3 && d <= 6 && s.freqs[k] > 0.5
+  })
+  if (!flank.length) return false
+  return p.value > ratio * (flank.reduce((a, b) => a + b, 0) / flank.length)
 }

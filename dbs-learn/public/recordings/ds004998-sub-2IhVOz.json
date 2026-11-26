@@ -1,0 +1,27 @@
+{
+  "title": "Resting STN LFP, OFF and ON levodopa",
+  "source": "OpenNeuro ds004998 v1.2.2",
+  "doi": "10.18112/openneuro.ds004998.v1.2.2",
+  "licence": "CC0 1.0 (public domain dedication)",
+  "citation": "Rassoulou F, Steina A, Hartmann CJ, Vesper J, Butz M, Schnitzler A, Hirschmann J. Exploring the electrophysiology of Parkinson's disease with magnetoencephalography and deep brain recordings. Scientific Data 11, 889 (2024).",
+  "subject": "sub-2IhVOz",
+  "recording": "Externalised DBS leads recorded through the MEG system's EEG inputs, task-HoldR run-1, rest period",
+  "window_s": [5, 65],
+  "fs": 250,
+  "scale_uv": 0.01,
+  "layout": "int16 little-endian, 8 channels interleaved per sample",
+  "channels": ["R0", "R1", "R2", "R3", "L0", "L1", "L2", "L3"],
+  "contacts": "Four recorded contacts per side, 0 deepest, mapped from the subject's montage.tsv (EEG001-004 right, EEG005-008 left)",
+  "bad": { "off": [], "on": ["L0"] },
+  "processing": "Mean removed; zero-phase 4th-order Butterworth 0.5 Hz high-pass and 100 Hz low-pass; decimated from 2000 to 250 Hz (scripts/prepare_recording.py). Contacts as recorded against the amplifier reference; bipolar pairs are formed in the app.",
+  "files": { "off": "ds004998-sub-2IhVOz-medoff.bin", "on": "ds004998-sub-2IhVOz-medon.bin" },
+  "selection": {
+    "reason": "Chosen because both sides show a clear beta peak OFF levodopa; its reduction ON (about 0.6x on the clearest pair per side) is typical rather than the largest seen.",
+    "screened": 14,
+    "excluded": 4,
+    "clear_off_peak": 6,
+    "fell_on_of_those": 5,
+    "criterion": "First run of a task recorded in both conditions; rest 5-65 s free of marked bad segments; bipolar pairs without bad contacts; clear peak = 13-35 Hz maximum at least 2.5 times the mean of bins 3-6 Hz either side (the course's peak test). The pair with the clearest OFF peak per side is compared, which slightly favours finding a drop ON.",
+    "script": "scripts/screen_recordings.py"
+  }
+}

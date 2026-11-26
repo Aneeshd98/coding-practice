@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { FS, INITIAL, applyPatch, type Config, type ConfigPatch, type Movement, type Subject } from '../sim/model'
 import { SignalStore, rowsFor, type Montage } from '../dsp/store'
-import { CAPTURE_SECONDS, type Captures } from '../course/practicals'
+import { CAPTURE_SECONDS, type Captures, type ReviewLog } from '../course/practicals'
 
 export function load<T>(key: string, fallback: T): T {
   try {
@@ -24,6 +24,9 @@ function useController() {
   const worker = useRef<Worker | null>(null)
   const [config, setConfig] = useState<Config>(INITIAL)
   const [seed, setSeed] = useState(() => load('seed', 7))
+  // An assessment patient replaces the lesson patient while the assessment page is open, without being saved.
+  const [examSeed, setExamSeed] = useState<number | null>(null)
+  const active = examSeed ?? seed
   const [subject, setSubject] = useState<Subject | null>(null)
   const [ready, setReady] = useState(false)
   const [paused, setPaused] = useState(false)
@@ -33,6 +36,7 @@ function useController() {
   const [montage, setMontageState] = useState<Montage>('Sandwich pairs')
   const [focus, setFocus] = useState('L 0–2')
   const [captures, setCaptures] = useState<Captures>({})
+  const [review, setReview] = useState<ReviewLog>({})
   const [protocol, setProtocol] = useState<{ done: number; total: number } | null>(null)
   const [revealed, setRevealed] = useState(false)
   const [notice, setNotice] = useState('')
@@ -47,13 +51,22 @@ function useController() {
       } else if (m.type === 'subject') setSubject(m.subject)
       else if (m.type === 'protocol') setProtocol(m.status)
     }
-    w.postMessage({ type: 'init', seed })
+    w.postMessage({ type: 'init', seed: active })
     setConfig(INITIAL)
     setCaptures({})
+    setReview({})
     setRevealed(false)
     setFrozen(null)
     return () => w.terminate()
-  }, [signals, seed])
+  }, [signals, active])
+
+  // Segment channels exist only on a directional lead (a new patient starts with ring contacts).
+  useEffect(() => {
+    if (config.lead !== 'directional' && montage === 'Segments') {
+      setMontageState('Sandwich pairs')
+      setFocus((f) => rowsFor('Sandwich pairs').find((r) => r.side === f[0])?.name ?? 'L 0–2')
+    }
+  }, [config.lead, montage])
 
   useEffect(() => {
     if (!notice) return
@@ -84,7 +97,10 @@ function useController() {
     config,
     change,
     subject,
-    seed,
+    seed: active,
+    /** True while an assessment patient is loaded: the β region cannot be revealed. */
+    exam: examSeed !== null,
+    setExamSeed,
     newPatient: () => {
       const next = seed + 1
       store('seed', next)
@@ -111,6 +127,8 @@ function useController() {
     setFocus,
     captures,
     capture,
+    review,
+    setReview,
     protocol,
     runMovement: (fast: boolean, cycles = 12, hand: Movement = 'right') => {
       setFrozen(null)

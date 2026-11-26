@@ -24,6 +24,19 @@ cerebral bounding box; and vertices were re-quantized.
 The adapted surfaces in brain.bin and brain.json are distributed under Creative Commons
 Attribution-ShareAlike 4.0 International: https://creativecommons.org/licenses/by-sa/4.0/
 
+mri.bin / mri.json (MRI slice in the 3D view)
+
+A cropped, brain-masked, 8-bit copy of the ICBM 152 Nonlinear Symmetrical 2009c T1-weighted
+template (Fonov et al., NeuroImage 2011; Fonov et al., NeuroImage 2009; Collins et al. 1999),
+as distributed by TemplateFlow (tpl-MNI152NLin2009cSym, res-1). Prepared with
+scripts/prepare_mri.py: cropped to x -60..60, y -60..40, z -40..50 mm, voxels outside the
+template's brain mask set to 0, and intensities rescaled to 1-255.
+
+Copyright (C) 1993-2004 Louis Collins, McConnell Brain Imaging Centre, Montreal
+Neurological Institute, McGill University. The full notice is in MNI152-LICENSE.txt in
+this folder. The template is an average of many brains; the brain surfaces and the
+schematic nuclei are only approximately aligned to it.
+
 Deep structures (STN, globus pallidus, putamen, caudate, thalamus, red nucleus,
 substantia nigra) and the DBS leads are original schematic shapes generated in code
 (src/three/anatomy.ts) from rounded textbook positions. They are not an atlas and

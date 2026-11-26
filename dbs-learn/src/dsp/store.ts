@@ -1,5 +1,7 @@
 import {
   FS,
+  SEGMENTS,
+  segLane,
   INITIAL,
   LANE,
   RANGE_UV,
@@ -12,8 +14,8 @@ import {
   type StateChange,
 } from '../sim/model'
 
-export type Montage = 'Sandwich pairs' | 'Adjacent pairs' | 'Monopolar'
-export const MONTAGES: Montage[] = ['Sandwich pairs', 'Adjacent pairs', 'Monopolar']
+export type Montage = 'Sandwich pairs' | 'Adjacent pairs' | 'Monopolar' | 'Segments'
+export const MONTAGES: Montage[] = ['Sandwich pairs', 'Adjacent pairs', 'Monopolar', 'Segments']
 /** A derivation: contact a minus contact b, or minus the implant case when b is -1. */
 export interface Row {
   name: string
@@ -21,7 +23,7 @@ export interface Row {
   a: number
   b: number
 }
-const PAIRS: Record<Montage, number[][]> = {
+const PAIRS: Record<Exclude<Montage, 'Segments'>, number[][]> = {
   'Sandwich pairs': [
     [0, 2],
     [1, 3],
@@ -39,7 +41,18 @@ const rowOf = (side: Side, pair: number[]): Row => ({
   a: ch(side, pair[0]),
   b: pair.length === 2 ? ch(side, pair[1]) : -1,
 })
+/** Within-level segment pairs on a directional lead (1a–1b, 1b–1c, 1c–1a, and the same for level 2). */
+const segmentRows = (side: Side): Row[] =>
+  ([1, 2] as const).flatMap((level) =>
+    [0, 1, 2].map((g) => ({
+      name: `${side} ${level}${SEGMENTS[g]}–${level}${SEGMENTS[(g + 1) % 3]}`,
+      side,
+      a: segLane(side, level, g),
+      b: segLane(side, level, (g + 1) % 3),
+    })),
+  )
 export function rowsFor(montage: Montage): Row[] {
+  if (montage === 'Segments') return SIDES.flatMap(segmentRows)
   return SIDES.flatMap((side) => PAIRS[montage].map((pair) => rowOf(side, pair)))
 }
 export const ALL_ROWS: Row[] = [...MONTAGES.flatMap(rowsFor), ...SIDES.map((s) => rowOf(s, [0, 3]))]
@@ -102,7 +115,9 @@ export class SignalStore {
   /** Each derivation behaves like a differential amplifier that saturates at ±RANGE_UV. */
   value(sample: number, row: Row, clean = false) {
     if (!this.has(sample)) return 0
-    const p = (sample % this.capacity) * STRIDE + (clean ? LANE.neural : 0)
+    // Segment lanes have no separate artifact-free copy; they always read the acquired signal.
+    const useClean = clean && row.a < LANE.segments
+    const p = (sample % this.capacity) * STRIDE + (useClean ? LANE.neural : 0)
     const v = this.raw[p + row.a] - (row.b < 0 ? 0 : this.raw[p + row.b])
     return clean ? v : Math.max(-RANGE_UV, Math.min(RANGE_UV, v))
   }

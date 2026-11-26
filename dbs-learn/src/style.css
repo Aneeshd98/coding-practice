@@ -1594,3 +1594,676 @@ details.reading ul {
     display: none;
   }
 }
+
+.fields + .chart {
+  margin-top: 16px;
+}
+
+.stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.stepper output {
+  min-width: 64px;
+  text-align: center;
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--stim);
+}
+.exam {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+}
+.exam-row {
+  display: grid;
+  grid-template-columns: 120px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  font-size: 13.5px;
+}
+.exam-row span {
+  color: var(--muted);
+}
+.exam-row b {
+  font-family: var(--mono);
+  font-weight: 500;
+}
+.exam-row b.warn {
+  color: var(--warn);
+}
+.exam-row:not(:first-child) b {
+  grid-column: 2 / 4;
+}
+.bar.wide {
+  height: 8px;
+}
+.table tr.current th,
+.table tr.current td {
+  background: var(--select);
+}
+
+.status-chip.toggle {
+  border: 0;
+  cursor: pointer;
+}
+.status-chip.toggle:hover {
+  color: var(--ink);
+}
+.status-chip.toggle.on {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+/* Directional sensing: a top-down polar view of each lead's segments. */
+.polar-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 12px;
+}
+.polar-card {
+  margin: 0;
+  border: 1px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--surface-2);
+  padding: 10px 12px 12px;
+}
+.polar-card figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 10px;
+  font-size: 12.5px;
+}
+.polar-card figcaption span {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+.polar {
+  display: block;
+  width: 100%;
+  max-width: 230px;
+  margin: 4px auto 6px;
+}
+.polar-ring {
+  fill: var(--surface);
+  stroke: var(--line);
+}
+.polar-base {
+  fill: none;
+  stroke: var(--muted);
+  stroke-dasharray: 3 3;
+  stroke-opacity: 0.7;
+}
+.polar-axis {
+  stroke: var(--grid);
+}
+.polar-label {
+  font-size: 10px;
+  font-family: var(--mono);
+  fill: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.polar-wedge {
+  fill: var(--beta);
+  fill-opacity: 0.22;
+  stroke: var(--beta);
+  stroke-opacity: 0.45;
+}
+.polar-wedge.strongest {
+  fill-opacity: 0.55;
+  stroke-opacity: 0.9;
+}
+.polar-seg {
+  font-size: 12px;
+  font-family: var(--mono);
+  fill: var(--ink-2);
+}
+.polar-seg.strongest {
+  fill: var(--beta);
+  font-weight: 600;
+}
+.polar-estimate {
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+.polar-tip {
+  fill: var(--ink);
+}
+.polar-truth {
+  stroke: var(--ok);
+  stroke-width: 2;
+  stroke-dasharray: 5 4;
+}
+.case-bars small {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.case-bars .exam-row span {
+  font-family: var(--mono);
+}
+.case-bars .exam-row {
+  grid-template-columns: 16px 1fr 40px;
+  gap: 8px;
+  font-size: 12px;
+}
+.case-bars .exam-row b {
+  grid-column: auto;
+  text-align: right;
+}
+.case-bars .exam-row + .exam-row {
+  margin-top: 3px;
+}
+.feedback p.hint {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
+/* Predict-then-reveal */
+.predict {
+  border: 1px solid color-mix(in srgb, var(--stim) 35%, var(--line));
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  background: linear-gradient(180deg, var(--stim-soft), transparent 160%);
+}
+.predict .eyebrow {
+  color: var(--stim);
+  margin-bottom: 6px;
+}
+.predict-q {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.answers.compact {
+  margin: 12px 0 8px;
+  gap: 8px;
+}
+.answers.compact button {
+  padding: 9px 12px;
+  font-size: 14px;
+  grid-template-columns: 26px 1fr;
+}
+.answers.compact button span {
+  width: 26px;
+  height: 26px;
+}
+.predict-made {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.predict-made b {
+  color: var(--ink);
+  font-weight: 600;
+}
+.predict .feedback {
+  margin: 10px 0 0;
+}
+.btn.small {
+  height: 30px;
+  padding: 0 11px;
+  font-size: 13px;
+}
+
+/* Patient assessment */
+.assessment {
+  grid-template-columns: minmax(0, 1fr) 360px;
+}
+.assess-tools .tool + .tool {
+  margin-top: 16px;
+}
+.case-card {
+  position: sticky;
+  top: 84px;
+}
+.case-steps {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 0;
+  padding: 12px 16px 0;
+}
+.case-steps li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+  padding: 6px 8px;
+  border-radius: 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+}
+.case-steps li span {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--line-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+.case-steps li.current {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--line));
+  background: var(--select);
+}
+.case-steps li.current span {
+  background: var(--primary);
+  color: #fff;
+}
+.case-steps li.passed {
+  color: var(--ok);
+}
+.case-steps li.passed span {
+  background: var(--ok-soft);
+}
+.case-steps li.failed {
+  color: var(--stim);
+}
+.case-steps li.failed span {
+  background: var(--stim-soft);
+}
+.case-body {
+  display: grid;
+  gap: 14px;
+  padding: 14px 16px 18px;
+}
+.case-body fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.case-body legend {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+  padding: 0;
+  margin-bottom: 8px;
+}
+.case-body .answers.compact {
+  margin: 0;
+}
+.case-body .feedback {
+  margin: 0;
+}
+.case-body > .btn {
+  justify-self: start;
+}
+.peak-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--muted);
+}
+.peak-input input {
+  width: 110px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+}
+.results {
+  display: grid;
+  gap: 8px;
+}
+.result-row {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--stim);
+}
+.result-row.ok {
+  color: var(--ok);
+}
+.result-row svg {
+  margin-top: 1px;
+}
+.result-row b {
+  display: block;
+  color: var(--ink);
+  font-weight: 600;
+}
+.result-row span {
+  color: var(--ink-2);
+}
+.case-detail summary {
+  cursor: pointer;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  margin-bottom: 8px;
+}
+.assess-status {
+  display: grid;
+  grid-template-columns: 18px 1fr 16px;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0;
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line-2);
+  background: var(--surface-2);
+  color: var(--primary);
+  text-decoration: none;
+}
+.assess-status b {
+  display: block;
+  color: var(--ink);
+  font-size: 13.5px;
+}
+.assess-status small {
+  color: var(--muted);
+  font-size: 12px;
+}
+@media (max-width: 1100px) {
+  .assessment {
+    grid-template-columns: 1fr;
+  }
+  .case-card {
+    position: static;
+    order: -1;
+  }
+}
+select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Spectrogram strip under the traces */
+.spectro {
+  border-top: 1px solid var(--line-2);
+  padding: 8px 0 8px;
+}
+.spectro.closed {
+  padding: 4px 0;
+}
+.spectro-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 0 14px 0 12px;
+}
+.spectro-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: none;
+  padding: 4px 6px;
+  border-radius: 7px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.spectro-toggle:hover {
+  background: var(--surface-2);
+  color: var(--ink);
+}
+.spectro-scale {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.spectro-scale i {
+  width: 64px;
+  height: 8px;
+  border-radius: 3px;
+  outline: 1px solid var(--line);
+}
+.spectro-scale small {
+  font-size: 10.5px;
+}
+.spectro-plot {
+  position: relative;
+  margin: 6px 14px 0 78px;
+}
+.spectro-y {
+  position: absolute;
+  left: -78px;
+  width: 70px;
+  top: 0;
+  height: 92px;
+}
+.spectro-y span {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.spectro-area {
+  position: relative;
+  height: 92px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  outline: 1px solid var(--line-2);
+  cursor: crosshair;
+}
+.spectro-area canvas {
+  position: absolute;
+  top: 0;
+  height: 100%;
+}
+.spectro-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.spectro-beta {
+  stroke: var(--beta);
+  stroke-dasharray: 3 3;
+  stroke-opacity: 0.75;
+}
+.spectro-event {
+  stroke: var(--ink);
+  stroke-opacity: 0.55;
+}
+.spectro-band {
+  position: absolute;
+  right: 4px;
+  transform: translateY(-110%);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--beta);
+  pointer-events: none;
+}
+.spectro-label {
+  position: absolute;
+  top: 3px;
+  transform: translateX(4px);
+  max-width: 34%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-2);
+  pointer-events: none;
+}
+.spectro-label.before {
+  transform: translateX(-4px);
+}
+.spectro-tip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 10px));
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--ink);
+  color: var(--surface);
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 2;
+}
+.spectro-wait {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+.spectro-x {
+  position: relative;
+  height: 18px;
+}
+.spectro-x span {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.spectro-x span:first-child {
+  transform: none;
+}
+.spectro-x span:last-child {
+  transform: translateX(-100%);
+}
+@media (max-width: 720px) {
+  .spectro-plot {
+    margin-left: 52px;
+  }
+  .spectro-y {
+    left: -52px;
+    width: 46px;
+  }
+  .spectro-scale small {
+    display: none;
+  }
+}
+.chip-select {
+  position: relative;
+  padding-right: 6px;
+}
+.chip-select select {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  padding: 0 14px 0 2px;
+  cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, #9fb0d6 50%), linear-gradient(135deg, #9fb0d6 50%, transparent 50%);
+  background-position: right 5px center, right 1px center;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+}
+.chip-select select option {
+  color: #0f1830;
+}
+/* The viewport grows to match a taller neighbouring card (the traces with their spectrogram). */
+.brain-card .viewport {
+  flex: 1 0 auto;
+}
+.transfer {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-2);
+}
+.transfer .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.transfer small {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.transfer .status {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  color: var(--warn);
+}
+/* Four nav items need the room at tablet widths: the counter (also on the course map) and the wordmark go first. */
+@media (max-width: 1100px) {
+  .progress-mini {
+    display: none;
+  }
+}
+@media (max-width: 900px) {
+  .brand span.word {
+    display: none;
+  }
+}
+/* Small phones (320-420 px): controls wrap instead of pushing the page sideways. */
+@media (max-width: 420px) {
+  .control {
+    flex-wrap: wrap;
+  }
+  .seg {
+    flex-wrap: wrap;
+    max-width: 100%;
+  }
+  .seg button {
+    padding: 6px 8px;
+  }
+  .table {
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  .tabs {
+    padding: 0 6px;
+    overflow-x: auto;
+  }
+  .tabs button {
+    padding: 13px 8px;
+    gap: 5px;
+    font-size: 13.5px;
+  }
+}
+@media (max-width: 360px) {
+  .tabs button svg {
+    display: none;
+  }
+}

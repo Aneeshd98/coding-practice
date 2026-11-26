@@ -1,12 +1,16 @@
-import { useMemo, useState, type ReactNode } from 'react'
-import { AudioWaveform, Camera, Hand, HeartPulse, Pill, RefreshCw, Sparkles, Timer, UserRound, Waves, Zap } from 'lucide-react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Activity, AudioWaveform, CalendarClock, Compass, Database, Stethoscope, Camera, Gauge, X, Hand, HeartPulse, Minus, Plus, SlidersVertical, Pill, RefreshCw, Sparkles, Timer, UserRound, Waves, Zap } from 'lucide-react'
 import { useLab, useTick } from '../app/lab'
-import { FS, LANE, SIDES, type Movement } from '../sim/model'
+import { DISORDERS, FS, LANE, SEGMENTS, SEGMENT_ANGLE, SIDES, TARGET_OF, type Disorder, type Movement, type Side } from '../sim/model'
 import { rowNamed } from '../dsp/store'
 import { BETA, bandPower, peak, prominent, welch } from '../dsp/spectrum'
 import { analyzeBursts } from '../dsp/bursts'
+import { DIRECTIONAL_SECONDS, SEGMENT_FACING, segmentBeta, type DirectionalBeta } from '../dsp/directional'
+import { REAL_PAIRS, badContacts, compareConditions, loadRecording, pairSeries, type Recording } from '../dsp/recording'
 import { POST_S, PRE_S, movementCourse } from '../dsp/movement'
-import { betaPower, captureBursts } from '../course/practicals'
+import { TEST_MAX, response } from '../sim/field'
+import { SLEEP, chronicDay, summarise } from '../sim/chronic'
+import { ADAPTIVE_BETA, ADAPTIVE_ENERGY, betaPower, captureBursts, meanDelivered } from '../course/practicals'
 import { Chart } from './Chart'
 
 export const TRIALS = 12
@@ -38,10 +42,25 @@ export function PatientBar() {
           <UserRound size={18} />
         </span>
         <span>
-          <b>Virtual patient #{l.seed}</b>
-          <small>Bilateral STN · 4-contact leads</small>
+          <b>{l.exam ? 'Assessment patient' : `Virtual patient #${l.seed}`}</b>
+          <small>
+            Bilateral {{ stn: 'STN', gpi: 'GPi', vim: 'VIM' }[TARGET_OF[l.config.disorder]]} · {l.config.lead === 'directional' ? 'directional' : '4-ring'} leads
+          </small>
         </span>
       </div>
+      <label className="control">
+        <span className="control-label">
+          <Stethoscope size={14} /> Condition
+        </span>
+        <select aria-label="Condition" disabled={l.exam} value={now.disorder} onChange={(e) => l.change({ disorder: e.target.value as Disorder }, 'Condition: ' + e.target.value)}>
+          {DISORDERS.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.label} · {d.target}
+            </option>
+          ))}
+        </select>
+      </label>
+      {now.disorder === 'pd' && (
       <div className="control">
         <span className="control-label">
           <Pill size={14} /> Levodopa
@@ -54,16 +73,17 @@ export function PatientBar() {
           ))}
         </div>
       </div>
+      )}
       <div className="control">
         <span className="control-label">
-          <Hand size={14} /> Movement
+          <Hand size={14} /> {now.disorder === 'tremor' ? 'Posture' : 'Movement'}
         </span>
         <div className="seg" role="group" aria-label="Movement">
           {(
             [
               ['rest', 'Rest'],
-              ['left', 'Left hand'],
-              ['right', 'Right hand'],
+              ['left', now.disorder === 'tremor' ? 'Hold left arm' : 'Left hand'],
+              ['right', now.disorder === 'tremor' ? 'Hold right arm' : 'Right hand'],
             ] as [Movement, string][]
           ).map(([m, label]) => (
             <button key={m} aria-pressed={now.movement === m} disabled={!!l.protocol} onClick={() => l.change({ movement: m }, m === 'rest' ? 'Rest' : 'Move ' + label.toLowerCase())}>
@@ -72,9 +92,19 @@ export function PatientBar() {
           ))}
         </div>
       </div>
+      {now.disorder === 'pd' && (
+      <button
+        className={'status-chip toggle' + (now.dyskinesia ? ' on' : '')}
+        aria-pressed={now.dyskinesia}
+        title="Peak-dose dyskinesia, expressed while levodopa is ON"
+        onClick={() => l.change({ dyskinesia: !now.dyskinesia }, 'Dyskinesia ' + (now.dyskinesia ? 'off' : 'on'))}
+      >
+        Dyskinesia {now.dyskinesia ? (now.medication === 'on' ? 'on' : 'on · needs levodopa') : 'off'}
+      </button>
+      )}
       <span className={'status-chip' + (now.stim.on ? ' stim' : '')}>
         <Zap size={13} />
-        {now.stim.on ? `Stim ${now.stim.amplitude.toFixed(1)} mA · ${now.stim.frequency} Hz` : 'Stimulation off'}
+        {!now.stim.on ? 'Stimulation off' : now.adaptive.on ? `Adaptive · up to ${now.adaptive.max} mA` : `Stim ${now.stim.amplitude.toFixed(1)} mA · ${now.stim.frequency} Hz`}
       </span>
       {bpm && (
         <span className="status-chip heart" title="Heart rate from the ECG witness">
@@ -82,9 +112,11 @@ export function PatientBar() {
         </span>
       )}
       <span className="spacer" />
-      <button className="btn ghost" onClick={l.newPatient}>
-        <RefreshCw size={14} /> New patient
-      </button>
+      {!l.exam && (
+        <button className="btn ghost" onClick={l.newPatient}>
+          <RefreshCw size={14} /> New patient
+        </button>
+      )}
     </section>
   )
 }
@@ -169,6 +201,12 @@ export function SpectrumPanel({ upTo = 60 }: { upTo?: number }) {
   const markers = []
   if (ready && p.local) markers.push({ x: p.hz, y: p.value, label: `β peak ${p.hz.toFixed(1)} Hz`, color: color.beta })
   if (ready && max > 60 && alias.local) markers.push({ x: alias.hz, y: alias.value, label: `${alias.hz.toFixed(1)} Hz`, color: color.stim })
+  const disorder = l.config.disorder
+  const lowRaw = peak(sp, 3, 12)
+  const low = { ...lowRaw, local: prominent(sp, lowRaw, 3, 12) }
+  if (ready && disorder !== 'pd' && low.local) markers.push({ x: low.hz, y: low.value, label: `${disorder === 'tremor' ? 'tremor' : 'θ/α'} ${low.hz.toFixed(1)} Hz`, color: color.sense })
+  const gammaRaw = peak(sp, 55, 95)
+  if (ready && max > 60 && prominent(sp, gammaRaw, 40, 100, 4)) markers.push({ x: gammaRaw.hz, y: gammaRaw.value, label: `γ ${gammaRaw.hz.toFixed(1)} Hz`, color: color.primary })
   return (
     <div className="tool">
       <ToolHead icon={<AudioWaveform size={15} />} tone="beta" title={`Power spectrum · ${row.name}`}>
@@ -198,6 +236,15 @@ export function SpectrumPanel({ upTo = 60 }: { upTo?: number }) {
               yLabel="Power spectral density (µV²/Hz)"
             />
             <div className="metrics">
+              {disorder !== 'pd' && (
+                <div className="metric">
+                  <small>Peak 3–12 Hz</small>
+                  <b>
+                    {low.local ? low.hz.toFixed(1) : '—'}
+                    <em>{low.local ? 'Hz' : 'no clear peak'}</em>
+                  </b>
+                </div>
+              )}
               <div className="metric beta">
                 <small>Beta peak</small>
                 <b>
@@ -354,9 +401,11 @@ export function MovementPanel() {
   useTick(l.signals, 1000)
   const [fast, setFast] = useState(true)
   const [pair, setPair] = useState('0–2')
+  // The store is mutated in place, so its identity never changes: recompute every 25 blocks instead.
   const bucket = l.signals.revision - (l.signals.revision % 25)
   const course = useMemo(
     () => SIDES.map((side) => ({ name: side + ' ' + pair, result: movementCourse(l.signals, rowNamed(side + ' ' + pair)!) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- bucket is the cache key for the mutable store
     [l.signals, bucket, pair],
   )
   const ready = course.every((c) => c.result)
@@ -462,6 +511,660 @@ export function StimPanel() {
           </label>
         </div>
         <p className="note">Teaching values only. Stimulation soft-starts over half a second. Nothing here reflects settings for a real device or patient.</p>
+      </div>
+    </div>
+  )
+}
+
+export function AdaptivePanel() {
+  const l = useLab()
+  useTick(l.signals, 500)
+  const a = l.config.adaptive,
+    k = l.config.stim.contact.L
+  const pair = k >= 1 && k <= 2 ? `${k - 1}–${k + 1}` : k === 0 ? '0–1 (contains the stimulating contact)' : '2–3 (contains the stimulating contact)'
+  const end = l.viewEnd(),
+    n = Math.max(0, Math.min(15 * FS, end - l.signals.start))
+  const lane = (id: number) => Float64Array.from({ length: n }, (_, i) => l.signals.at(end - n + i, id))
+  const estimate = lane(LANE.senseL),
+    amplitude = lane(LANE.stimL)
+  const win = Math.min(20 * FS, end - l.signals.start)
+  const mean = meanDelivered(l.signals, end - win, end)
+  let active = 0
+  for (let i = end - win; i < end; i++) if (l.signals.at(i, LANE.stimL) > 0.1) active++
+  const row = rowNamed('L 0–2')!
+  const beta = win > 2 * FS ? betaPower(l.signals, end - win, end, row) : NaN
+  const off = l.captures.off && l.signals.has(l.captures.off.start) ? betaPower(l.signals, l.captures.off.start, l.captures.off.end, row) : null
+  const ratio = off ? beta / off : null
+  const set = (patch: Partial<typeof a>, label?: string) => l.change({ adaptive: patch }, label)
+  return (
+    <div className="tool">
+      <ToolHead icon={<Gauge size={15} />} tone="stim" title="Adaptive DBS · left">
+        <label className="switch">
+          <input
+            type="checkbox"
+            role="switch"
+            aria-label="Adaptive stimulation"
+            checked={a.on && l.config.stim.on}
+            onChange={(e) => l.change({ adaptive: { on: e.target.checked }, ...(e.target.checked ? { stim: { on: true } } : {}) }, 'Adaptive DBS ' + (e.target.checked ? 'on' : 'off'))}
+          />
+          <span className="track" />
+          {a.on && l.config.stim.on ? 'Adaptive' : 'Off'}
+        </label>
+      </ToolHead>
+      <div className="tool-body">
+        <div className="fields">
+          <label>
+            Sensing centre <b>{a.centre} Hz</b>
+            <input type="range" min={13} max={35} step={0.5} value={a.centre} aria-label="Sensing centre" onChange={(e) => set({ centre: +e.target.value })} />
+          </label>
+          <label>
+            Threshold <b>{a.threshold.toFixed(2)} µV</b>
+            <input type="range" min={0.2} max={2.5} step={0.05} value={a.threshold} aria-label="Threshold" onChange={(e) => set({ threshold: +e.target.value })} />
+          </label>
+          <label>
+            Ramp
+            <select aria-label="Ramp" value={a.ramp} onChange={(e) => set({ ramp: +e.target.value }, 'Ramp ' + e.target.value + ' mA/s')}>
+              {[1.5, 3, 6, 12].map((v) => (
+                <option key={v} value={v}>
+                  {v} mA/s
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Smoothing
+            <select aria-label="Smoothing" value={a.smoothing} onChange={(e) => set({ smoothing: +e.target.value }, 'Smoothing ' + e.target.value + ' s')}>
+              {[0.1, 0.25, 0.5, 1, 2].map((v) => (
+                <option key={v} value={v}>
+                  {v} s
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Maximum
+            <select aria-label="Maximum amplitude" value={a.max} onChange={(e) => set({ max: +e.target.value }, 'Adaptive maximum ' + e.target.value + ' mA')}>
+              {[1.5, 2, 2.5, 3, 3.5, 4].map((v) => (
+                <option key={v} value={v}>
+                  {v} mA
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        <Chart
+          series={[
+            { name: 'sensed beta', y: estimate, color: color.beta, width: 1.6 },
+            { name: 'threshold', y: new Float64Array(n).fill(a.threshold), color: color.stim, dashed: true, width: 1.3 },
+          ]}
+          x0={-n / FS}
+          x1={0}
+          zero
+          xLabel="Seconds before the view edge"
+          yLabel={`Controller estimate from L ${pair} (µV)`}
+          height={150}
+          unit=" s"
+        />
+        <Chart
+          series={[{ name: 'delivered amplitude', y: amplitude, color: color.stim, fill: true, width: 1.6 }]}
+          x0={-n / FS}
+          x1={0}
+          yRange={[0, Math.max(a.max, l.config.stim.amplitude) + 0.2]}
+          xLabel="Seconds before the view edge"
+          yLabel="Left stimulation amplitude (mA)"
+          height={130}
+          unit=" s"
+        />
+        <div className="metrics">
+          <div className="metric stim">
+            <small>Mean amplitude · 20 s</small>
+            <b>
+              {mean.toFixed(2)}
+              <em>mA · {a.max ? ((mean / a.max) * 100).toFixed(0) : 0}% of max</em>
+            </b>
+          </div>
+          <div className="metric stim">
+            <small>Time stimulating</small>
+            <b>
+              {win ? ((100 * active) / win).toFixed(0) : '—'}
+              <em>%</em>
+            </b>
+          </div>
+          <div className="metric beta">
+            <small>L 0–2 beta vs OFF capture</small>
+            <b>
+              {ratio === null ? '—' : (ratio * 100).toFixed(0)}
+              <em>{ratio === null ? 'capture OFF first' : '% of OFF'}</em>
+            </b>
+          </div>
+        </div>
+        <p className="note">
+          Single-threshold controller on the left lead (stimulating contact {k}): band-pass ±3 Hz around the centre, rectify, smooth, then ramp up above threshold and down below it.
+          Practical goal: beta ≤ {ADAPTIVE_BETA * 100}% of OFF with mean amplitude ≤ {ADAPTIVE_ENERGY * 100}% of maximum.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+export function ReviewPanel() {
+  const l = useLab()
+  const s = l.config.stim
+  const contact = s.contact.L,
+    mA = s.on ? s.amplitude : 0,
+    pw = s.pulseWidth
+  const r = l.subject ? response(l.subject, 'L', contact, mA, pw) : null
+  const test = (patch: { contact?: number; amplitude?: number; pulseWidth?: number }) =>
+    l.change({ stim: { on: true, ...(patch.contact !== undefined ? { contact: { L: patch.contact } } : {}), ...(patch.amplitude !== undefined ? { amplitude: patch.amplitude } : {}), ...(patch.pulseWidth ? { pulseWidth: patch.pulseWidth } : {}) } })
+  const step = (d: number) => test({ amplitude: Math.max(0, Math.min(TEST_MAX, Math.round((mA + d) * 10) / 10)) })
+  const record = (key: 'benefit' | 'side', value: number | null) =>
+    l.setReview({ ...l.review, [contact]: { ...l.review[contact], pulseWidth: pw, [key]: value } })
+  const fmt = (v: number | null | undefined) => (v === undefined ? '—' : v === null ? 'none' : v.toFixed(1) + ' mA')
+  const windowOf = (e?: { benefit?: number | null; side?: number | null }) =>
+    !e || e.benefit === undefined || e.side === undefined ? '—' : e.benefit === null ? 'no benefit' : ((e.side ?? TEST_MAX) - e.benefit).toFixed(1) + ' mA'
+  return (
+    <div className="tool">
+      <ToolHead icon={<SlidersVertical size={15} />} tone="stim" title="Monopolar review · left lead">
+        <label className="select">
+          Pulse width
+          <select aria-label="Pulse width" value={pw} onChange={(e) => test({ pulseWidth: +e.target.value })}>
+            {[30, 60, 90].map((v) => (
+              <option key={v} value={v}>
+                {v} µs
+              </option>
+            ))}
+          </select>
+        </label>
+      </ToolHead>
+      <div className="tool-body">
+        <div className="fields">
+          <div className="seg" role="group" aria-label="Contact under test">
+            {[0, 1, 2, 3].map((c) => (
+              <button key={c} aria-pressed={contact === c} onClick={() => test({ contact: c, amplitude: 0 })}>
+                Contact {c}
+              </button>
+            ))}
+          </div>
+          <div className="stepper">
+            <button className="icon-btn" aria-label="Decrease amplitude" onClick={() => step(-0.1)}>
+              <Minus size={15} />
+            </button>
+            <output aria-live="polite">{mA.toFixed(1)} mA</output>
+            <button className="icon-btn" aria-label="Increase amplitude" onClick={() => step(0.1)}>
+              <Plus size={15} />
+            </button>
+            <button className="btn ghost" onClick={() => step(0.5)}>
+              +0.5
+            </button>
+          </div>
+        </div>
+        {r && (
+          <div className="exam">
+            <div className="exam-row">
+              <span>Rigidity relief</span>
+              <div className="bar wide">
+                <i style={{ width: r.benefit * 100 + '%', background: r.benefit >= 0.5 ? 'var(--ok)' : 'var(--primary)' }} />
+              </div>
+              <b>{Math.round(r.benefit * 100)}%</b>
+            </div>
+            <div className="exam-row">
+              <span>Side effects</span>
+              <b className={r.effects.length ? 'warn' : ''}>{r.effects.length ? r.effects.map((e) => e.effect).join(' · ') : 'None observed'}</b>
+            </div>
+            <div className="exam-row">
+              <span>Field radius</span>
+              <b>{r.radius.toFixed(1)} mm</b>
+            </div>
+          </div>
+        )}
+        <div className="captures">
+          <button className="btn" onClick={() => record('benefit', mA)}>
+            Record benefit threshold · {mA.toFixed(1)} mA
+          </button>
+          <button className="btn" onClick={() => record('benefit', null)}>
+            No benefit before side effects
+          </button>
+          <button className="btn" onClick={() => record('side', mA)}>
+            Record side-effect threshold · {mA.toFixed(1)} mA
+          </button>
+          <button className="btn" onClick={() => record('side', null)}>
+            No side effect by {TEST_MAX} mA
+          </button>
+        </div>
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Contact</th>
+              <th>Benefit threshold</th>
+              <th>Side-effect threshold</th>
+              <th>Window</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[0, 1, 2, 3].map((c) => (
+              <tr key={c} className={c === contact ? 'current' : ''}>
+                <th>
+                  {c}
+                  {l.review[c] && l.review[c].pulseWidth !== 60 ? ` · ${l.review[c].pulseWidth} µs` : ''}
+                </th>
+                <td>{fmt(l.review[c]?.benefit)}</td>
+                <td>{fmt(l.review[c]?.side)}</td>
+                <td>{windowOf(l.review[c])}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <p className="note">
+          Benefit means at least 50% rigidity relief. Testing stops at {TEST_MAX} mA. Use the brain model in Target view to see the field and any pathway it reaches. Teaching model only: thresholds come from a schematic field, not a validated volume-of-tissue-activated model.
+        </p>
+      </div>
+    </div>
+  )
+}
+
+const hh = (h: number) => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`
+
+export function ChronicPanel() {
+  const l = useLab()
+  const [doses, setDoses] = useState<number[]>([7, 11, 15, 19])
+  const [next, setNext] = useState(13)
+  const day = useMemo(() => (l.subject ? chronicDay(l.subject, 'L', doses) : []), [l.subject, doses])
+  if (!day.length) return null
+  const sum = summarise(day)
+  return (
+    <div className="tool">
+      <ToolHead icon={<CalendarClock size={15} />} tone="beta" title="Chronic timeline · left STN">
+        <div className="seg" role="group" aria-label="Dosing presets">
+          {(
+            [
+              ['3 doses', [7, 13, 19]],
+              ['4 doses', [7, 11, 15, 19]],
+              ['5 doses', [7, 10, 13, 16, 19]],
+            ] as [string, number[]][]
+          ).map(([label, d]) => (
+            <button key={label} aria-pressed={d.join() === doses.join()} onClick={() => setDoses(d)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </ToolHead>
+      <div className="tool-body">
+        <div className="captures" style={{ marginTop: 0 }}>
+          {doses.map((d) => (
+            <span key={d} className="capture has">
+              Levodopa <b>{hh(d)}</b>
+              <button className="icon-btn" style={{ width: 22, height: 22 }} aria-label={`Remove the ${hh(d)} dose`} onClick={() => setDoses(doses.filter((x) => x !== d))}>
+                <X size={13} />
+              </button>
+            </span>
+          ))}
+          <label className="select">
+            <select aria-label="New dose time" value={next} onChange={(e) => setNext(+e.target.value)}>
+              {Array.from({ length: 33 }, (_, i) => 6 + i * 0.5).map((h) => (
+                <option key={h} value={h}>
+                  {hh(h)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className="btn" disabled={doses.includes(next)} onClick={() => setDoses([...doses, next].sort((a, b) => a - b))}>
+            Add dose
+          </button>
+        </div>
+        <Chart
+          series={[
+            { name: 'beta power (logged every 10 min)', y: day.map((p) => p.beta), color: color.beta, width: 2, fill: true },
+            { name: 'gamma (peak dose)', y: day.map((p) => p.gamma * 0.5), color: color.primary, width: 1.5 },
+          ]}
+          x0={0}
+          x1={24}
+          yRange={[0, 1.15]}
+          bands={[
+            { from: 0, to: SLEEP[1], color: 'color-mix(in srgb, var(--muted) 10%, transparent)', label: 'sleep', labelColor: 'var(--muted)' },
+            { from: SLEEP[0], to: 24, color: 'color-mix(in srgb, var(--muted) 10%, transparent)' },
+          ]}
+          vlines={doses.map((d) => ({ at: d, label: 'dose' }))}
+          xLabel="Hour of the day"
+          yLabel="Relative to untreated daytime beta"
+          height={200}
+          unit="h"
+        />
+        <div className="metrics">
+          <div className="metric beta">
+            <small>Waking hours with high beta</small>
+            <b>
+              {sum.offHours.toFixed(1)}
+              <em>h · under-treated</em>
+            </b>
+          </div>
+          <div className="metric">
+            <small>Waking hours with gamma</small>
+            <b>
+              {sum.dyskinesiaHours.toFixed(1)}
+              <em>h · dyskinesia-prone</em>
+            </b>
+          </div>
+          <div className="metric">
+            <small>Doses</small>
+            <b>{doses.length}</b>
+          </div>
+        </div>
+        <p className="note">High beta: above 75% of the untreated daytime level while awake. Each dose takes effect in about 30 minutes, peaks near 1 hour and wanes over about 3 hours. Teaching model, not dosing advice.</p>
+      </div>
+    </div>
+  )
+}
+
+export function TremorPanel() {
+  const l = useLab()
+  useTick(l.signals, 500)
+  const end = l.viewEnd(),
+    n = Math.max(0, Math.min(4 * FS, end - l.signals.start))
+  const acc = Float64Array.from({ length: n }, (_, i) => l.signals.at(end - n + i, LANE.accel))
+  const long = l.signals.series(end, 8 * FS, rowNamed('L 0–2')!)
+  const span = Math.max(0, Math.min(8 * FS, end - l.signals.start))
+  const accLong = Float64Array.from({ length: span }, (_, i) => l.signals.at(end - span + i, LANE.accel))
+  const lfp = long.length >= 512 ? peak(welch(long, 512), 3, 12) : null
+  const hand = accLong.length >= 512 ? peak(welch(accLong, 512), 3, 12) : null
+  const rms = Math.sqrt(acc.reduce((a, v) => a + v * v, 0) / Math.max(1, acc.length))
+  return (
+    <div className="tool">
+      <ToolHead icon={<Activity size={15} />} tone="sense" title="Tremor · right-hand accelerometer" />
+      <div className="tool-body">
+        <Chart series={[{ name: 'accelerometer', y: acc, color: color.sense, width: 1.5 }]} x0={-n / FS} x1={0} zero xLabel="Seconds before the view edge" yLabel="Right-hand acceleration (milli-g)" height={140} unit=" s" />
+        <div className="metrics">
+          <div className="metric">
+            <small>Tremor amplitude</small>
+            <b>
+              {rms.toFixed(0)}
+              <em>mg RMS</em>
+            </b>
+          </div>
+          <div className="metric">
+            <small>Hand tremor frequency</small>
+            <b>
+              {hand && rms > 3 ? hand.hz.toFixed(1) : '—'}
+              <em>Hz</em>
+            </b>
+          </div>
+          <div className="metric">
+            <small>Left VIM (L 0–2) peak 3–12 Hz</small>
+            <b>
+              {lfp ? lfp.hz.toFixed(1) : '—'}
+              <em>Hz</em>
+            </b>
+          </div>
+        </div>
+        <p className="note">The accelerometer is on the right hand, whose tremor is driven by the left thalamus. Hold the right arm out to bring the tremor on.</p>
+      </div>
+    </div>
+  )
+}
+
+/** Screen position for a direction around the lead, seen from above with anterior up and lateral outward. */
+const polar = (side: Side, deg: number, r: number, c = 110): [number, number] => {
+  const t = (deg * Math.PI) / 180
+  return [c + (side === 'R' ? 1 : -1) * r * Math.sin(t), c - r * Math.cos(t)]
+}
+
+function DirectionPlot({ side, result, truth }: { side: Side; result: DirectionalBeta; truth: number | null }) {
+  const R = 74,
+    base = 0.52 * R
+  const max = Math.max(1e-9, ...result.relative.map(Math.abs))
+  const at = (deg: number, r: number) => polar(side, deg, r).map((v) => v.toFixed(1)).join(' ')
+  const name = side === 'L' ? 'Left' : 'Right'
+  return (
+    <svg className="polar" viewBox="0 0 220 220" role="img" aria-label={`${name} lead, directional beta by segment; strongest ${SEGMENTS[result.strongest]} (${SEGMENT_FACING[result.strongest]})`}>
+      <circle cx={110} cy={110} r={R} className="polar-ring" />
+      <circle cx={110} cy={110} r={base} className="polar-base" />
+      <line x1={110} x2={110} y1={110 - R - 4} y2={110 + R + 4} className="polar-axis" />
+      <line x1={110 - R - 4} x2={110 + R + 4} y1={110} y2={110} className="polar-axis" />
+      <text x={110} y={14} textAnchor="middle" className="polar-label">
+        Anterior
+      </text>
+      <text x={110} y={214} textAnchor="middle" className="polar-label">
+        Posterior
+      </text>
+      <text x={side === 'R' ? 216 : 4} y={113} textAnchor={side === 'R' ? 'end' : 'start'} className="polar-label">
+        Lat
+      </text>
+      <text x={side === 'R' ? 4 : 216} y={113} textAnchor={side === 'R' ? 'start' : 'end'} className="polar-label">
+        Med
+      </text>
+      {SEGMENT_ANGLE.map((deg, g) => {
+        const r = Math.max(0.12 * R, base + 0.46 * R * (result.relative[g] / max))
+        const sweep = side === 'R' ? 1 : 0
+        const strongest = g === result.strongest
+        const [lx, ly] = polar(side, deg, R + 11)
+        return (
+          <g key={g}>
+            <path
+              d={`M110 110 L${at(deg - 50, r)} A${r.toFixed(1)} ${r.toFixed(1)} 0 0 ${sweep} ${at(deg + 50, r)} Z`}
+              className={'polar-wedge' + (strongest ? ' strongest' : '')}
+            />
+            <text x={lx} y={ly + 4} textAnchor="middle" className={'polar-seg' + (strongest ? ' strongest' : '')}>
+              {SEGMENTS[g]}
+            </text>
+          </g>
+        )
+      })}
+      {truth !== null && (
+        <line x1={110} y1={110} x2={polar(side, truth, R + 2)[0]} y2={polar(side, truth, R + 2)[1]} className="polar-truth" />
+      )}
+      <line x1={110} y1={110} x2={polar(side, result.angle, R - 6)[0]} y2={polar(side, result.angle, R - 6)[1]} className="polar-estimate" />
+      <circle cx={polar(side, result.angle, R - 6)[0]} cy={polar(side, result.angle, R - 6)[1]} r={3.5} className="polar-tip" />
+    </svg>
+  )
+}
+
+export function DirectionalPanel() {
+  const l = useLab()
+  useTick(l.signals, 1000)
+  const directional = l.config.lead === 'directional'
+  const end = l.viewEnd(),
+    from = end - DIRECTIONAL_SECONDS * FS
+  const ready = directional && l.signals.spans(from, end, (c) => c.lead === 'directional')
+  const recorded = directional ? Math.min(DIRECTIONAL_SECONDS, l.signals.settledFor(end, (c) => c.lead) / FS) : 0
+  const stimOn = l.signals.configAt(end - 1).stim.on
+  const results = ready ? SIDES.map((side) => segmentBeta(l.signals, side, from, end)) : null
+  const setLead = (lead: 'ring' | 'directional') => {
+    if (lead === 'ring' && l.montage === 'Segments') l.setMontage('Sandwich pairs')
+    l.change({ lead }, lead === 'ring' ? 'Ring lead' : 'Directional lead')
+  }
+  return (
+    <div className="tool">
+      <ToolHead icon={<Compass size={15} />} tone="beta" title="Directional sensing">
+        <div className="seg" role="group" aria-label="Lead type">
+          {(
+            [
+              ['ring', 'Ring'],
+              ['directional', 'Directional'],
+            ] as const
+          ).map(([v, label]) => (
+            <button key={v} aria-pressed={l.config.lead === v} onClick={() => setLead(v)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </ToolHead>
+      <div className="tool-body">
+        {!directional && (
+          <p className="note">Ring contacts wrap all the way round the lead, so each one averages every direction. Choose Directional to split levels 1 and 2 into segments a, b and c.</p>
+        )}
+        {directional && !results && <p className="note">Recording the segments… {recorded.toFixed(0)} of {DIRECTIONAL_SECONDS} s.</p>}
+        {results && (
+          <>
+            <div className="polar-pair">
+              {SIDES.map((side, i) => {
+                const r = results[i]
+                const spread = Math.max(...r.vsCase) / Math.max(1e-9, Math.min(...r.vsCase))
+                const top = Math.max(1e-9, ...r.vsCase)
+                return (
+                  <figure key={side} className="polar-card">
+                    <figcaption>
+                      <b>{side === 'L' ? 'Left' : 'Right'} lead</b>
+                      <span>
+                        Strongest {side} 1{SEGMENTS[r.strongest]}/2{SEGMENTS[r.strongest]} · {SEGMENT_FACING[r.strongest]}
+                      </span>
+                    </figcaption>
+                    <DirectionPlot side={side} result={r} truth={l.revealed && l.subject ? l.subject.betaAngle[side] : null} />
+                    <div className="case-bars" aria-label={`${side} segments against the case`}>
+                      <small>
+                        Against the case: segments differ by {spread < 1.5 ? 'only ' : ''}×{spread.toFixed(2)}
+                      </small>
+                      {SEGMENTS.map((name, g) => (
+                        <div key={name} className="exam-row">
+                          <span>{name}</span>
+                          <div className="bar wide">
+                            <i style={{ width: (100 * r.vsCase[g]) / top + '%', background: 'var(--muted)' }} />
+                          </div>
+                          <b>{r.vsCase[g].toFixed(1)}</b>
+                        </div>
+                      ))}
+                    </div>
+                  </figure>
+                )
+              })}
+            </div>
+            <p className="note">
+              Wedges compare each segment with the average of its own level (dashed circle) over the last {DIRECTIONAL_SECONDS} s, so the heartbeat and far-field activity that all three share cancel. The line is the estimated beta direction
+              {l.revealed ? '; the dashed line is the true one.' : l.exam ? '.' : '. Reveal the β region to check it.'}
+              {stimOn ? ' Stimulation is on: its artifact can distort segment recordings, so read direction with stimulation off.' : ''}
+            </p>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export function RecordingPanel() {
+  const [rec, setRec] = useState<Recording | null>(null)
+  const [error, setError] = useState('')
+  const [side, setSide] = useState<Side>('L')
+  const [pair, setPair] = useState<[number, number]>([2, 3])
+  const [at, setAt] = useState(21)
+  useEffect(() => {
+    let live = true
+    loadRecording(import.meta.env.BASE_URL)
+      .then((r) => live && setRec(r))
+      .catch(() => live && setError('The recording could not be loaded.'))
+    return () => {
+      live = false
+    }
+  }, [])
+  const result = useMemo(() => (rec ? compareConditions(rec, side, pair) : null), [rec, side, pair])
+  const excerpt = useMemo(() => {
+    if (!rec) return null
+    const fs = rec.manifest.fs,
+      from = at * fs,
+      to = from + 3 * fs
+    const [off, on] = (['off', 'on'] as const).map((c) => pairSeries(rec, c, side, pair).subarray(from, to))
+    const peakAbs = Math.max(...off.map(Math.abs), ...on.map(Math.abs))
+    return { off, on, range: [-peakAbs, peakAbs] as [number, number] }
+  }, [rec, side, pair, at])
+  const name = `${side} ${pair[0]}–${pair[1]}`
+  return (
+    <div className="tool">
+      <ToolHead icon={<Database size={15} />} tone="sense" title="Real recording · OFF and ON levodopa">
+        <div className="seg" role="group" aria-label="Recording side">
+          {SIDES.map((s) => (
+            <button key={s} aria-pressed={side === s} onClick={() => setSide(s)}>
+              {s === 'L' ? 'Left' : 'Right'}
+            </button>
+          ))}
+        </div>
+      </ToolHead>
+      <div className="tool-body">
+        {error && <p className="note">{error}</p>}
+        {!rec && !error && <p className="note">Loading the recording…</p>}
+        {rec && result && excerpt && (
+          <>
+            <div className="seg" role="group" aria-label="Recording pair">
+              {REAL_PAIRS.map((p) => {
+                const bad = badContacts(rec.manifest, side, p)
+                return (
+                  <button
+                    key={p.join()}
+                    aria-pressed={pair[0] === p[0] && pair[1] === p[1]}
+                    disabled={bad.length > 0}
+                    title={bad.length ? `Contact ${side}${bad[0]} was marked bad in the ON recording` : undefined}
+                    onClick={() => setPair(p)}
+                  >
+                    {side} {p[0]}–{p[1]}
+                  </button>
+                )
+              })}
+            </div>
+            <Chart
+              series={[
+                { name: 'OFF levodopa', y: result.off.spectrum.psd.slice(1, 124), color: color.primary },
+                { name: 'ON levodopa', y: result.on.spectrum.psd.slice(1, 124), color: color.sense, dashed: true },
+              ]}
+              x0={result.off.spectrum.freqs[1]}
+              x1={result.off.spectrum.freqs[123]}
+              log
+              bands={[{ from: BETA[0], to: BETA[1], color: 'color-mix(in srgb, var(--beta) 10%, transparent)', label: 'β 13–35 Hz', labelColor: 'var(--beta)' }]}
+              markers={(['off', 'on'] as const)
+                .filter((c) => result[c].clear)
+                .map((c) => ({ x: result[c].peakHz, y: result[c].spectrum.psd[Math.round((result[c].peakHz * 512) / rec.manifest.fs)], label: `${c.toUpperCase()} ${result[c].peakHz.toFixed(1)} Hz`, color: c === 'off' ? color.primary : color.sense }))}
+              xLabel="Frequency (Hz)"
+              yLabel={`Power spectral density, ${name} (µV²/Hz), 60 s each`}
+              unit=""
+            />
+            <div className="metrics">
+              <div className="metric">
+                <small>Beta OFF</small>
+                <b>
+                  {result.off.power.toFixed(2)}
+                  <em>µV² · {result.off.clear ? `peak ${result.off.peakHz.toFixed(1)} Hz` : 'no clear peak'}</em>
+                </b>
+              </div>
+              <div className="metric">
+                <small>Beta ON</small>
+                <b>
+                  {result.on.power.toFixed(2)}
+                  <em>µV² · {result.on.clear ? `peak ${result.on.peakHz.toFixed(1)} Hz` : 'no clear peak'}</em>
+                </b>
+              </div>
+              <div className="metric beta">
+                <small>ON ÷ OFF</small>
+                <b>
+                  {result.ratio.toFixed(2)}
+                  <em>×</em>
+                </b>
+              </div>
+            </div>
+            <label className="select" style={{ marginTop: 14 }}>
+              Excerpt
+              <select aria-label="Excerpt start" value={at} onChange={(e) => setAt(+e.target.value)}>
+                {Array.from({ length: 19 }, (_, i) => i * 3).map((s) => (
+                  <option key={s} value={s}>
+                    {s}–{s + 3} s
+                  </option>
+                ))}
+              </select>
+            </label>
+            {(['off', 'on'] as const).map((c) => (
+              <Chart
+                key={c}
+                series={[{ name: c === 'off' ? 'OFF levodopa' : 'ON levodopa', y: excerpt[c], color: c === 'off' ? color.primary : color.sense, width: 1.2 }]}
+                x0={at}
+                x1={at + 3}
+                yRange={excerpt.range}
+                zero
+                height={130}
+                xLabel="Seconds into the minute"
+                yLabel={`${name}, ${c.toUpperCase()} (µV)`}
+                unit=" s"
+              />
+            ))}
+            <p className="note">
+              Real data: participant {rec.manifest.subject}, OpenNeuro ds004998 (Rassoulou et al., Scientific Data 2024), released under CC0. One minute of rest per condition, 0.5–100 Hz, resampled to {rec.manifest.fs} Hz. {rec.manifest.selection.reason} Of {rec.manifest.selection.screened} participants
+              screened with the same peak test, {rec.manifest.selection.clear_off_peak} had a clear OFF beta peak, and beta fell ON in {rec.manifest.selection.fell_on_of_those} of those; the rest showed no clear peak.
+            </p>
+          </>
+        )}
       </div>
     </div>
   )

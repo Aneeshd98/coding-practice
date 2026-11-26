@@ -3,7 +3,7 @@ name: Subthalamic Lab
 # Tests every change to the course, and publishes it to GitHub Pages from main.
 on:
   push:
-    branches: [main]
+    branches: [main, 'claude/**']
     paths: ['dbs-learn/**', '.github/workflows/dbs-learn.yml']
   pull_request:
     paths: ['dbs-learn/**', '.github/workflows/dbs-learn.yml']
@@ -26,6 +26,7 @@ jobs:
           cache: npm
           cache-dependency-path: dbs-learn/package-lock.json
       - run: npm ci
+      - run: npm run lint
       - run: npm test
       - run: npm run build
       - run: npx playwright install --with-deps chromium

@@ -18,7 +18,7 @@ function session(seed = 7) {
 }
 
 test('course content is complete and every answer index is valid', () => {
-  assert.equal(modules.length, 4)
+  assert.equal(modules.length, 7)
   assert.equal(new Set(lessons.map((l) => l.id)).size, lessons.length)
   for (const l of lessons) {
     assert.ok(l.correct >= 0 && l.correct < l.options.length, l.id)
@@ -72,4 +72,97 @@ test('stimulation practical uses the measured alias and the required settings', 
   assert.ok(grade('stim', ctx(), '130'))
   run(6, { stim: { contact: { L: 3 } } })
   assert.match(grade('stim', ctx(), '120')!, /contact 1/)
+})
+
+test('the adaptive practical requires real suppression, energy savings and stable settings', async () => {
+  const { meanDelivered } = await import('../src/course/practicals')
+  const { store, run } = session()
+  run(25)
+  const captures: Captures = { off: { start: store.end - 20 * FS, end: store.end, row: 'L 0–2' } }
+  const ctx = () => ({ store, viewEnd: store.end, montage: 'Sandwich pairs' as const, captures })
+  // Threshold too low: suppression without savings.
+  run(25, { stim: { on: true }, adaptive: { on: true, centre: 19.4, threshold: 0.1, max: 3 } })
+  assert.match(grade('adaptive', ctx(), '3')!, /Raise the threshold/)
+  // Tuned: passes only with the measured mean amplitude.
+  run(25, { adaptive: { threshold: 0.7, ramp: 6, smoothing: 0.25 } })
+  const mean = meanDelivered(store, store.end - 20 * FS, store.end)
+  assert.equal(grade('adaptive', ctx(), mean.toFixed(2)), undefined)
+  assert.ok(grade('adaptive', ctx(), (mean + 0.5).toFixed(2)))
+  // Changing a setting inside the window invalidates it.
+  run(5, { adaptive: { threshold: 0.72 } })
+  assert.match(grade('adaptive', ctx(), mean.toFixed(2))!, /no setting changes/)
+})
+
+test('the programming practical needs a complete, accurate review and the widest window', async () => {
+  const { thresholds, bestContact } = await import('../src/sim/field')
+  const { makeSubject } = await import('../src/sim/model')
+  const { store } = session()
+  const subject = makeSubject(7)
+  const ctx = (review: Record<number, { benefit?: number | null; side?: number | null; pulseWidth: number }>) => ({
+    store,
+    viewEnd: store.end,
+    montage: 'Sandwich pairs' as const,
+    captures: {},
+    review,
+    seed: 7,
+  })
+  const truthful = Object.fromEntries(
+    [0, 1, 2, 3].map((c) => {
+      const t = thresholds(subject, 'L', c, 60)
+      return [c, { benefit: t.benefit, side: t.sideEffect, pulseWidth: 60 }]
+    }),
+  )
+  const best = String(bestContact(subject, 'L', 60))
+  assert.match(grade('programming', ctx({ 0: truthful[0] }), best)!, /contact 1/)
+  assert.equal(grade('programming', ctx(truthful), best), undefined)
+  assert.ok(grade('programming', ctx(truthful), best === '0' ? '3' : '0'))
+  const sloppy = { ...truthful, 1: { ...truthful[1], benefit: (truthful[1].benefit ?? 2) + 1 } }
+  assert.match(grade('programming', ctx(sloppy), best)!, /Re-test contact 1/)
+})
+
+test('the tremor practical measures the contralateral VIM peak during posture', async () => {
+  const { peak, welch } = await import('../src/dsp/spectrum')
+  const { store, run } = session()
+  run(10, { disorder: 'tremor' })
+  const ctx = () => ({ store, viewEnd: store.end, montage: 'Sandwich pairs' as const, captures: {} })
+  assert.match(grade('beyond', ctx(), '5.5')!, /holding the right arm/)
+  run(10, { movement: 'right' })
+  const hz = peak(welch(store.range(store.end - 8 * FS, store.end, rowNamed('L 0–2')!), 512), 3, 12).hz
+  assert.equal(grade('beyond', ctx(), hz.toFixed(1)), undefined)
+  assert.ok(grade('beyond', ctx(), (hz + 2).toFixed(1)))
+})
+
+test('every wrong option explains why it is wrong', () => {
+  for (const l of lessons) {
+    assert.equal(l.why.length, l.options.length, l.id)
+    l.why.forEach((w, i) => assert.equal(w === '', i === l.correct, `${l.id} option ${i}`))
+  }
+})
+
+test('assessment truth matches what the recording shows, and boundary cases accept both answers', async () => {
+  const { truthFor, gradeCase, caseSeed, PAIRS } = await import('../src/course/assessment')
+  const { segmentBeta } = await import('../src/dsp/directional')
+  const { SEGMENTS } = await import('../src/sim/model')
+  const { BETA, bandPower, peak, welch } = await import('../src/dsp/spectrum')
+  for (let i = 0; i < 6; i++) {
+    const seed = caseSeed(i, i % 3)
+    const truth = truthFor(seed)
+    // What a learner would measure: adjacent-pair beta, the peak on L 0–2, and directional beta.
+    const g = new Generator(seed)
+    const store = new SignalStore(120)
+    g.configure({ lead: 'directional' })
+    store.ingest(0, g.block(10 * FS), [], g.states)
+    g.states = []
+    store.ingest(g.sample, g.block(20 * FS))
+    const power = PAIRS.map((p) => bandPower(welch(store.series(store.end, 20 * FS, rowNamed('L ' + p)!)), BETA[0], BETA[1]))
+    const measuredPair = PAIRS[power.indexOf(Math.max(...power))]
+    assert.ok(truth.pairs.includes(measuredPair), `seed ${seed}: measured ${measuredPair}, accepted ${truth.pairs}`)
+    const measuredPeak = peak(welch(store.series(store.end, 20 * FS, rowNamed('L 0–2')!)), BETA[0], BETA[1]).hz
+    assert.ok(Math.abs(measuredPeak - truth.peak) <= 1.5, `seed ${seed}: peak ${measuredPeak.toFixed(1)} vs ${truth.peak}`)
+    const dir = segmentBeta(store, 'L', store.end - 8 * FS, store.end)
+    assert.ok(truth.segments.includes(SEGMENTS[dir.strongest]), `seed ${seed}: segment ${SEGMENTS[dir.strongest]} vs ${truth.segments}`)
+    const r = gradeCase(seed, { pair: measuredPair, peak: measuredPeak.toFixed(1), segment: SEGMENTS[dir.strongest] })
+    assert.ok(r.passed)
+  }
+  assert.equal(gradeCase(caseSeed(0, 0), { pair: '', peak: '', segment: '' }).passed, false)
 })

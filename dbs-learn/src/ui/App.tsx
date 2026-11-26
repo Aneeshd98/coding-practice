@@ -1,14 +1,17 @@
-import { useEffect, useState } from 'react'
-import { ArrowRight, AudioWaveform, Cable, ChevronRight, CircleCheck, FlaskConical, GraduationCap, Layers3, PanelsTopLeft, Waves, Zap } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ArrowRight, AudioWaveform, Cable, ClipboardCheck, Download, Upload, Gauge, Globe2, SlidersVertical, ChevronRight, CircleCheck, FlaskConical, GraduationCap, Layers3, PanelsTopLeft, Waves, Zap } from 'lucide-react'
 import { LabProvider, load, store, useLab } from '../app/lab'
 import { lessons, modules, moduleOf, type ModuleId, type Tool } from '../course/content'
 import { LessonView, ModuleOutline, ToolView } from './Lesson'
 import { BrainPanel } from './BrainPanel'
 import { PatientBar } from './panels'
+import { Assessment, loadAssessment } from './Assessment'
+import { CASES, passedAssessment } from '../course/assessment'
+import { applyProgress, exportProgress, validate } from '../app/progress'
 import { Traces } from './Traces'
 
 const route = () => window.location.hash.replace(/^#\/?/, '').split('/')
-const moduleIcon: Record<ModuleId, typeof Zap> = { sensing: Cable, beta: AudioWaveform, bursts: Waves, stim: Zap }
+const moduleIcon: Record<ModuleId, typeof Zap> = { sensing: Cable, beta: AudioWaveform, bursts: Waves, stim: Zap, programming: SlidersVertical, adaptive: Gauge, beyond: Globe2 }
 const pad = (n: number) => String(n).padStart(2, '0')
 
 export function Mark() {
@@ -64,7 +67,7 @@ function CourseMap({ done, passed, resume }: { done: string[]; passed: string[];
         <div>
           <div className="eyebrow">Learning path</div>
           <h1>Course map</h1>
-          <p>Four modules take you from a single contact pair to stimulation artifacts. Each ends with a practical graded from your own recording.</p>
+          <p>Seven modules take you from a single contact pair to programming, closed-loop stimulation and other disorders. Each ends with a practical graded from your own recording.</p>
         </div>
       </div>
       <div className="map-grid">
@@ -123,16 +126,97 @@ function CourseMap({ done, passed, resume }: { done: string[]; passed: string[];
               </b>
             </div>
           </div>
+          <AssessmentStatus />
           <a className="btn primary" href={'#/lesson/' + resume} style={{ width: '100%', justifyContent: 'center' }}>
             {done.length === lessons.length ? 'Revisit lessons' : 'Resume learning'} <ArrowRight size={15} />
           </a>
+          <ProgressTransfer />
         </aside>
       </div>
     </>
   )
 }
 
-const allTools: Tool[] = ['spectrum', 'bursts', 'movement', 'stim', 'sensing']
+/** Move progress between browsers as a file: GitHub Pages has no server to keep it. */
+function ProgressTransfer() {
+  const input = useRef<HTMLInputElement>(null)
+  const [message, setMessage] = useState('')
+  const save = () => {
+    const file = exportProgress()
+    const url = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `subthalamic-lab-progress-${file.exported.slice(0, 10)}.json`
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+  const open = async (f: File) => {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(await f.text())
+    } catch {
+      return setMessage('That file is not valid JSON.')
+    }
+    const r = validate(parsed)
+    if ('error' in r) return setMessage(r.error)
+    if (!window.confirm(`Replace this browser’s progress with the file’s (${r.progress.done.length} lessons complete)?`)) return
+    applyProgress(r.progress)
+    window.location.reload()
+  }
+  return (
+    <div className="transfer">
+      <div className="row">
+        <button className="btn" onClick={save}>
+          <Download size={15} /> Export progress
+        </button>
+        <button className="btn" onClick={() => input.current?.click()}>
+          <Upload size={15} /> Import
+        </button>
+        <input
+          ref={input}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          aria-label="Progress file to import"
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            e.target.value = ''
+            if (f) void open(f)
+          }}
+        />
+      </div>
+      <small>Progress is saved in this browser only. Export it to continue on another device.</small>
+      {message && (
+        <p role="alert" className="status">
+          {message}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function AssessmentStatus() {
+  const a = loadAssessment()
+  const done = a.results.length >= CASES
+  return (
+    <a className="assess-status" href="#/assess">
+      <ClipboardCheck size={16} />
+      <span>
+        <b>Patient assessment</b>
+        <small>
+          {done
+            ? (passedAssessment(a) ? 'Passed' : 'Not passed') + ` · ${a.results.filter((r) => r.passed).length} of ${CASES} patients`
+            : a.results.length
+              ? `In progress · patient ${a.results.length + 1} of ${CASES}`
+              : 'Three unseen patients'}
+        </small>
+      </span>
+      <ChevronRight size={15} />
+    </a>
+  )
+}
+
+const allTools: Tool[] = ['spectrum', 'recording', 'adaptive', 'review', 'directional', 'chronic', 'tremor', 'bursts', 'stim', 'movement', 'sensing']
 
 function Workspace() {
   const l = useLab()
@@ -159,7 +243,16 @@ function Workspace() {
     }
   }, [page, path, lesson.id])
   useEffect(() => {
-    document.title = (page === 'map' ? 'Course map' : page === 'lab' ? 'Free lab' : lesson.title) + ' · Subthalamic Lab'
+    // Each lesson declares its patient's condition; the course default is Parkinson's disease.
+    // Wait for the patient: on first load the simulation starts after this effect and would reset it.
+    if ((page !== 'lesson' && page !== 'assess') || !l.subject) return
+    const wanted = page === 'assess' ? 'pd' : (lesson.disorder ?? 'pd')
+    if (l.config.disorder !== wanted) l.change({ disorder: wanted }, 'Condition for this lesson: ' + wanted)
+    // Only on entering a lesson or when a new patient starts: the learner may change the condition afterwards.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, lesson.id, lesson.disorder, l.subject])
+  useEffect(() => {
+    document.title = (page === 'map' ? 'Course map' : page === 'lab' ? 'Free lab' : page === 'assess' ? 'Patient assessment' : lesson.title) + ' · Subthalamic Lab'
   }, [page, lesson])
   const add = (list: string[], set: (v: string[]) => void, key: string, id: string) => {
     if (list.includes(id)) return
@@ -171,6 +264,7 @@ function Workspace() {
     { id: 'lesson', label: 'Learning studio', icon: PanelsTopLeft, href: '#/lesson/' + lesson.id },
     { id: 'map', label: 'Course map', icon: Layers3, href: '#/map' },
     { id: 'lab', label: 'Free lab', icon: FlaskConical, href: '#/lab' },
+    { id: 'assess', label: 'Assessment', icon: ClipboardCheck, href: '#/assess' },
   ]
   return (
     <>
@@ -204,6 +298,18 @@ function Workspace() {
       <main>
         {page === 'map' ? (
           <CourseMap done={done} passed={passed} resume={resume} />
+        ) : page === 'assess' ? (
+          <>
+            <div className="hero">
+              <div>
+                <div className="eyebrow">Check your skills</div>
+                <h1>Patient assessment</h1>
+                <p>Three virtual patients you have not met. Find each one’s beta contacts, peak frequency and beta direction from the recording alone. Answers are graded against the simulator’s hidden truth.</p>
+              </div>
+            </div>
+            <Instrument />
+            <Assessment />
+          </>
         ) : page === 'lab' ? (
           <>
             <div className="hero">
@@ -272,6 +378,9 @@ function Workspace() {
         <span style={{ display: 'flex', gap: 16 }}>
           <a href={import.meta.env.BASE_URL + 'anatomy/ATTRIBUTION.txt'} target="_blank" rel="noreferrer">
             Anatomy credits
+          </a>
+          <a href={import.meta.env.BASE_URL + 'recordings/ATTRIBUTION.txt'} target="_blank" rel="noreferrer">
+            Recording credits
           </a>
           <a href={import.meta.env.BASE_URL + 'THIRD-PARTY.txt'} target="_blank" rel="noreferrer">
             Software licences

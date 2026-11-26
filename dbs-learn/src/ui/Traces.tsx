@@ -3,6 +3,7 @@ import { Activity, Pause, Play, Snowflake } from 'lucide-react'
 import { useLab, useTick } from '../app/lab'
 import { FS, LANE, RANGE_UV } from '../sim/model'
 import { MONTAGES, rowsFor, type Montage } from '../dsp/store'
+import { SpectrogramStrip } from './Spectrogram'
 
 const GUTTER = 78,
   RIGHT = 14,
@@ -199,7 +200,9 @@ export function Traces() {
           <span className="sr-only">Montage</span>
           <select aria-label="Montage" value={l.montage} onChange={(e) => l.setMontage(e.target.value as Montage)}>
             {MONTAGES.map((m) => (
-              <option key={m}>{m}</option>
+              <option key={m} disabled={m === 'Segments' && l.config.lead !== 'directional'}>
+                {m === 'Segments' && l.config.lead !== 'directional' ? 'Segments (directional lead only)' : m}
+              </option>
             ))}
           </select>
         </label>
@@ -247,6 +250,7 @@ export function Traces() {
           }}
         />
       </div>
+      <SpectrogramStrip />
       <footer className="trace-foot">
         <span>Positive up</span>
         <span>±{l.scale} µV per half-lane</span>

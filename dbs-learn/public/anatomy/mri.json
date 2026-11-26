@@ -1,0 +1,16 @@
+{
+  "format": "uint8 volume, x fastest, then y, then z; 0 = outside the brain mask",
+  "origin": [
+    -60,
+    -60,
+    -40
+  ],
+  "spacing": 1,
+  "shape": [
+    121,
+    101,
+    91
+  ],
+  "source": "ICBM 152 Nonlinear Symmetrical 2009c (TemplateFlow tpl-MNI152NLin2009cSym), T1w, res-1",
+  "licence": "MNI152-LICENSE.txt"
+}

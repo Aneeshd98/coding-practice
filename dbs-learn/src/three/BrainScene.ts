@@ -1,22 +1,32 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
-import { SIDES, type Side } from '../sim/model'
-import { NUCLEI, activationRadius, add as add3, leadGeometry, mirror, nucleus, type LeadGeometry, type Nucleus, type Vec3 } from './anatomy'
+import { SEGMENT_ANGLE, SIDES, type Side } from '../sim/model'
+import { NUCLEI, add as add3, leadGeometry, mirror, nucleus, type LeadGeometry, type Nucleus, type Target, type Vec3 } from './anatomy'
+import { PATHWAYS, radius, reached } from '../sim/field'
 
 export type CortexMode = 'glass' | 'solid' | 'hidden'
 export type ViewPreset = 'overview' | 'coronal' | 'sagittal' | 'target'
+export type SliceMode = 'off' | 'axial' | 'coronal' | 'sagittal'
 
 export interface SceneState {
   border: Record<Side, number> | null
   revealed: boolean
-  sensing: { side: Side; contacts: number[] } | null
+  /** Sensed contacts, and segments when a directional lane is selected. */
+  sensing: { side: Side; parts: { contact: number; segment?: number }[] } | null
+  lead: 'ring' | 'directional'
+  /** Direction each side's beta source lies in, degrees from anterior toward lateral. */
+  betaAngle: Record<Side, number> | null
   stimContact: Record<Side, number> | null
+  pulseWidth: number
+  target: Target
   cortex: CortexMode
   head: boolean
   view: ViewPreset
   targetSide: Side
   labels: boolean
+  /** An MRI template slice through the target: off, or the plane's orientation. */
+  slice: SliceMode
 }
 export interface LiveSignals {
   beta: Record<Side, number>
@@ -115,6 +125,27 @@ void main() {
   gl_FragColor = vec4(color * (0.6 + fresnel), strength * (0.1 + 0.55 * fresnel) * pulse);
 }`
 
+/** MRI slice: the plane's vertices are template millimetres, sampled from the 3D texture. */
+const sliceVertex = /* glsl */ `
+varying vec3 vMni;
+void main() {
+  vMni = position;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`
+const sliceFragment = /* glsl */ `
+precision highp sampler3D;
+uniform sampler3D volume;
+uniform vec3 origin;
+uniform vec3 size;
+varying vec3 vMni;
+void main() {
+  float v = texture(volume, (vMni - origin + 0.5) / size).r;
+  // 0 marks voxels outside the template's brain mask.
+  if (v < 0.5 / 255.0) discard;
+  float g = 0.04 + 0.7 * (v * 255.0 - 1.0) / 254.0;
+  gl_FragColor = vec4(vec3(g), 1.0);
+}`
+
 function taperedTube(points: { at: Vec3; r: number }[], side: Side) {
   const curve = new THREE.CatmullRomCurve3(points.map((p) => new THREE.Vector3(...mirror(p.at, side))))
   const segments = 96,
@@ -172,7 +203,9 @@ function ellipsoid(n: Nucleus, side: Side) {
 interface LeadParts {
   group: THREE.Group
   shaft: THREE.Mesh
-  contacts: THREE.Mesh<THREE.CylinderGeometry, THREE.MeshStandardMaterial>[]
+  /** One mesh per ring contact, three per segmented level. */
+  contacts: THREE.Mesh<THREE.CylinderGeometry, THREE.MeshStandardMaterial>[][]
+  arrow: THREE.Group
   vta: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>
   ring: THREE.Mesh
   geometry: LeadGeometry
@@ -191,7 +224,11 @@ export class BrainScene {
   private parts: THREE.Mesh[] = []
   private scalp: THREE.Mesh | null = null
   private nuclei = new Map<string, THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>>()
+  private pathways = new Map<string, THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>>()
   private leads: Partial<Record<Side, LeadParts>> = {}
+  private base = ''
+  private volume: { origin: Vec3; shape: Vec3; mesh: THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial> } | null = null
+  private volumeRequested = false
   private state: SceneState | null = null
   private tween: { from: [THREE.Vector3, THREE.Vector3]; to: [THREE.Vector3, THREE.Vector3]; start: number } | null = null
   private clock = new THREE.Clock()
@@ -253,6 +290,7 @@ export class BrainScene {
   }
 
   async load(url: string) {
+    this.base = url
     const [meta, bin] = await Promise.all([
       fetch(url + 'brain.json').then((r) => {
         if (!r.ok) throw new Error('Anatomy manifest unavailable')
@@ -306,6 +344,86 @@ export class BrainScene {
     this.onReady()
   }
 
+  /** The MRI template volume, fetched the first time a slice is shown. */
+  private async loadVolume() {
+    this.volumeRequested = true
+    try {
+      const [meta, bin] = await Promise.all([
+        fetch(this.base + 'mri.json').then((r) => {
+          if (!r.ok) throw new Error('MRI manifest unavailable')
+          return r.json() as Promise<{ origin: Vec3; shape: Vec3 }>
+        }),
+        fetch(this.base + 'mri.bin').then((r) => {
+          if (!r.ok) throw new Error('MRI volume unavailable')
+          return r.arrayBuffer()
+        }),
+      ])
+      const texture = new THREE.Data3DTexture(new Uint8Array(bin), ...meta.shape)
+      texture.format = THREE.RedFormat
+      texture.type = THREE.UnsignedByteType
+      texture.minFilter = texture.magFilter = THREE.LinearFilter
+      texture.unpackAlignment = 1
+      texture.needsUpdate = true
+      const geometry = new THREE.BufferGeometry()
+      geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12), 3))
+      geometry.setIndex([0, 1, 2, 0, 2, 3])
+      const mesh = new THREE.Mesh(
+        geometry,
+        new THREE.ShaderMaterial({
+          vertexShader: sliceVertex,
+          fragmentShader: sliceFragment,
+          uniforms: { volume: { value: texture }, origin: { value: new THREE.Vector3(...meta.origin) }, size: { value: new THREE.Vector3(...meta.shape) } },
+          side: THREE.DoubleSide,
+        }),
+      )
+      mesh.renderOrder = 1
+      mesh.frustumCulled = false
+      this.root.add(mesh)
+      this.volume = { origin: meta.origin, shape: meta.shape, mesh }
+      if (this.state) this.update(this.state)
+    } catch {
+      this.volumeRequested = false
+    }
+  }
+
+  /** Place the slice through the target: between the middle contacts if a lead is there, else the nucleus centre. */
+  private placeSlice(state: SceneState) {
+    if (state.slice === 'off') {
+      if (this.volume) this.volume.mesh.visible = false
+      return
+    }
+    if (!this.volume) {
+      if (!this.volumeRequested && this.base) void this.loadVolume()
+      return
+    }
+    const { origin, shape, mesh } = this.volume
+    const lead = this.leads[state.targetSide]
+    const at = lead
+      ? (new THREE.Vector3(...lead.geometry.contacts[1]).lerp(new THREE.Vector3(...lead.geometry.contacts[2]), 0.5).toArray() as Vec3)
+      : mirror(nucleus(state.target).centre, state.targetSide)
+    const axis = { sagittal: 0, coronal: 1, axial: 2 }[state.slice]
+    const [u, v] = [0, 1, 2].filter((a) => a !== axis)
+    const lo = origin,
+      hi = origin.map((o, a) => o + shape[a] - 1)
+    const fixed = Math.max(lo[axis], Math.min(hi[axis], at[axis]))
+    const corners = [
+      [lo[u], lo[v]],
+      [hi[u], lo[v]],
+      [hi[u], hi[v]],
+      [lo[u], hi[v]],
+    ]
+    const position = mesh.geometry.getAttribute('position') as THREE.BufferAttribute
+    corners.forEach(([cu, cv], i) => {
+      const p = [0, 0, 0]
+      p[axis] = fixed
+      p[u] = cu
+      p[v] = cv
+      position.setXYZ(i, p[0], p[1], p[2])
+    })
+    position.needsUpdate = true
+    mesh.visible = true
+  }
+
   private buildNuclei() {
     for (const side of SIDES)
       for (const n of NUCLEI) {
@@ -335,9 +453,34 @@ export class BrainScene {
         this.nuclei.set(side + n.id, mesh)
         this.root.add(mesh)
       }
+    // Neighbouring pathways whose activation causes side effects; they turn red when the field reaches them.
+    for (const side of SIDES)
+      for (const p of PATHWAYS) {
+        const g = new THREE.SphereGeometry(1, 40, 24).scale(...p.radii).translate(...mirror(p.centre, side))
+        const material = new THREE.ShaderMaterial({
+          transparent: true,
+          depthWrite: false,
+          vertexShader: nucleusVertex,
+          fragmentShader: nucleusFragment,
+          uniforms: {
+            color: { value: new THREE.Color(p.id === 'capsule' ? '#cfd9ee' : '#e6d38c') },
+            glowColor: { value: new THREE.Color('#ff3b3b') },
+            glow: { value: 0 },
+            split: { value: 0 },
+            planePoint: { value: new THREE.Vector3() },
+            planeNormal: { value: new THREE.Vector3(0, 1, 0) },
+            opacity: { value: 0.16 },
+          },
+        })
+        const mesh = new THREE.Mesh(g, material)
+        mesh.renderOrder = 6
+        mesh.visible = false
+        this.pathways.set(side + p.id, mesh)
+        this.root.add(mesh)
+      }
   }
 
-  private buildLead(geometry: LeadGeometry): LeadParts {
+  private buildLead(geometry: LeadGeometry, segmented: boolean, betaAngle?: number): LeadParts {
     const group = new THREE.Group()
     const dir = new THREE.Vector3(...geometry.direction)
     const up = new THREE.Vector3(0, 1, 0)
@@ -357,15 +500,52 @@ export class BrainScene {
     const cap = new THREE.Mesh(new THREE.SphereGeometry(0.635, 24, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), shaft.material)
     orient(cap, geometry.tip)
     group.add(cap)
-    const contacts = geometry.contacts.map((c) => {
-      const m = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.66, 0.66, 1.5, 36, 1, true),
-        new THREE.MeshStandardMaterial({ color: '#c9ced8', metalness: 1, roughness: 0.22, emissive: '#000000' }),
-      )
-      orient(m, c)
-      group.add(m)
-      return m
+    // Directions around the lead: 0° anterior, increasing toward lateral (mirrored between sides).
+    const anterior = new THREE.Vector3(0, 1, 0).projectOnPlane(dir).normalize()
+    const lateral = new THREE.Vector3(geometry.side === 'R' ? 1 : -1, 0, 0).projectOnPlane(dir).projectOnPlane(anterior).normalize()
+    const around = (deg: number) => {
+      const r = (deg * Math.PI) / 180
+      return anterior.clone().multiplyScalar(Math.cos(r)).addScaledVector(lateral, Math.sin(r))
+    }
+    const metal = () => new THREE.MeshStandardMaterial({ color: '#c9ced8', metalness: 1, roughness: 0.22, emissive: '#000000', side: THREE.DoubleSide })
+    const contacts = geometry.contacts.map((c, i) => {
+      if (!(segmented && (i === 1 || i === 2))) {
+        const m = new THREE.Mesh(new THREE.CylinderGeometry(0.66, 0.66, 1.5, 36, 1, true), metal())
+        m.userData = { contact: i }
+        orient(m, c)
+        group.add(m)
+        return [m]
+      }
+      // Three segments of about 100° each; CylinderGeometry's theta 0 lies along local +z.
+      return SEGMENT_ANGLE.map((deg, g) => {
+        const m = new THREE.Mesh(new THREE.CylinderGeometry(0.665, 0.665, 1.5, 16, 1, true, -Math.PI * (50 / 180), Math.PI * (100 / 180)), metal())
+        m.userData = { contact: i, segment: g }
+        const z = around(deg),
+          x = new THREE.Vector3().crossVectors(dir, z)
+        m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, dir, z))
+        m.position.set(...c)
+        group.add(m)
+        return m
+      })
     })
+    // Where the directional beta comes from, drawn between the two segmented levels.
+    const arrow = new THREE.Group()
+    const arrowMaterial = new THREE.MeshBasicMaterial({ color: BETA, transparent: true, opacity: 0.95, depthTest: false })
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 2.6, 10), arrowMaterial)
+    stem.position.set(0, 1.3, 0)
+    const head = new THREE.Mesh(new THREE.ConeGeometry(0.42, 1, 16), arrowMaterial)
+    head.position.set(0, 3.1, 0)
+    arrow.add(stem, head)
+    arrow.renderOrder = 8
+    stem.renderOrder = head.renderOrder = 8
+    if (betaAngle !== undefined) {
+      const out = around(betaAngle)
+      arrow.quaternion.setFromUnitVectors(up, out)
+      arrow.position.copy(new THREE.Vector3(...geometry.contacts[1]).lerp(new THREE.Vector3(...geometry.contacts[2]), 0.5).addScaledVector(out, 0.9))
+      arrow.userData.tip = arrow.position.clone().addScaledVector(out, 3.8).toArray()
+    }
+    arrow.visible = false
+    group.add(arrow)
     const vta = new THREE.Mesh(
       new THREE.SphereGeometry(1, 40, 28),
       new THREE.ShaderMaterial({
@@ -389,7 +569,7 @@ export class BrainScene {
     ring.renderOrder = 6
     group.add(ring)
     this.root.add(group)
-    return { group, shaft, contacts, vta, ring, geometry }
+    return { group, shaft, contacts, arrow, vta, ring, geometry }
   }
 
   private world(v: Vec3) {
@@ -401,7 +581,15 @@ export class BrainScene {
     const previous = this.state
     this.state = state
     this.root.updateMatrixWorld()
-    if (state.border && (force || !previous?.border || previous.border.L !== state.border.L || previous.border.R !== state.border.R)) {
+    const leadChanged =
+      !previous?.border ||
+      previous.border.L !== state.border?.L ||
+      previous.border.R !== state.border?.R ||
+      previous.target !== state.target ||
+      previous.lead !== state.lead ||
+      previous.betaAngle?.L !== state.betaAngle?.L ||
+      previous.betaAngle?.R !== state.betaAngle?.R
+    if (state.border && (force || leadChanged)) {
       for (const side of SIDES) {
         const old = this.leads[side]
         if (old) {
@@ -410,7 +598,7 @@ export class BrainScene {
             if (o instanceof THREE.Mesh) o.geometry.dispose()
           })
         }
-        this.leads[side] = this.buildLead(leadGeometry(side, state.border[side]))
+        this.leads[side] = this.buildLead(leadGeometry(side, state.border[side], state.target), state.lead === 'directional', state.betaAngle?.[side])
       }
     }
     const mode = state.view === 'target' ? 'hidden' : state.cortex
@@ -426,16 +614,26 @@ export class BrainScene {
       if (!lead) continue
       lead.group.visible = !target || side === state.targetSide
       lead.ring.visible = state.revealed
-      lead.contacts.forEach((m, c) => {
-        const sensing = state.sensing?.side === side && state.sensing.contacts.includes(c)
-        const stim = state.stimContact?.[side] === c
+      lead.arrow.visible = state.revealed && state.lead === 'directional'
+      lead.contacts.flat().forEach((m) => {
+        const { contact, segment } = m.userData as { contact: number; segment?: number }
+        // A ring selection lights every segment of its level; a segment selection lights only that segment.
+        const sensing =
+          state.sensing?.side === side &&
+          state.sensing.parts.some((p) => p.contact === contact && (p.segment === undefined || segment === undefined || p.segment === segment))
+        const stim = state.stimContact?.[side] === contact
         m.material.emissive.copy(stim ? STIM : sensing ? SENSE : new THREE.Color(0))
         m.material.emissiveIntensity = stim ? 0.9 : sensing ? 0.75 : 0
       })
-      const stn = this.nuclei.get(side + 'stn')!
-      stn.material.uniforms.split.value = state.revealed ? 1 : 0
-      stn.material.uniforms.planePoint.value.copy(this.world(lead.geometry.edge))
-      stn.material.uniforms.planeNormal.value.copy(
+      // The generator region lives in the current target; reset the others.
+      for (const id of ['stn', 'gpi', 'vim']) {
+        const u = this.nuclei.get(side + id)!.material.uniforms
+        u.split.value = id === state.target && state.revealed ? 1 : 0
+        if (id !== state.target) u.glow.value = 0
+      }
+      const focus = this.nuclei.get(side + state.target)!
+      focus.material.uniforms.planePoint.value.copy(this.world(lead.geometry.edge))
+      focus.material.uniforms.planeNormal.value.copy(
         new THREE.Vector3(...lead.geometry.direction).transformDirection(this.root.matrixWorld),
       )
       // Each view hides whatever would occlude what it is for.
@@ -443,17 +641,22 @@ export class BrainScene {
         const mesh = this.nuclei.get(side + n.id)!
         let visible = true,
           opacity = 0.9
+        const near: Record<Target, string[]> = { stn: ['stn', 'sn', 'rn'], gpi: ['gpi', 'gpe'], vim: ['vim', 'stn'] }
         if (target) {
-          visible = side === state.targetSide && ['stn', 'sn', 'rn'].includes(n.id)
-          opacity = n.id === 'stn' ? 0.5 : 0.45
+          visible = side === state.targetSide && near[state.target].includes(n.id)
+          opacity = n.id === state.target ? 0.5 : 0.4
         } else if (state.view === 'sagittal') {
           visible = side === 'L' && !['putamen', 'gpe'].includes(n.id)
-          opacity = n.id === 'stn' ? 0.9 : 0.7
-        } else if (n.id === 'stn') opacity = 0.85
+          opacity = n.id === state.target ? 0.9 : 0.7
+        } else if (n.id === state.target) opacity = 0.85
+        // The VIM is a region inside the thalamus: show it only when it is the target.
+        if (n.id === 'vim' && state.target !== 'vim') visible = false
         mesh.visible = visible
         mesh.material.uniforms.opacity.value = opacity
       }
+      for (const p of PATHWAYS) this.pathways.get(side + p.id)!.visible = state.target === 'stn' && ((target && side === state.targetSide) || state.view === 'coronal')
     }
+    this.placeSlice(state)
     if (force || !previous || previous.view !== state.view || previous.targetSide !== state.targetSide) this.goTo(state.view, state.targetSide, !previous)
     this.buildLabels()
   }
@@ -467,21 +670,28 @@ export class BrainScene {
       if (s.view === 'target') {
         const side = s.targetSide,
           lead = this.leads[side]
-        add('stn', (side === 'L' ? 'Left' : 'Right') + ' STN', 'nucleus', add3(mirror(nucleus('stn').centre, side), mirror([4, -4, -1], side)), side)
-        add('sn', 'Substantia nigra', 'nucleus', mirror(nucleus('sn').centre, side), side)
-        add('rn', 'Red nucleus', 'nucleus', mirror(nucleus('rn').centre, side), side)
+        const name = (side === 'L' ? 'Left ' : 'Right ') + nucleus(s.target).short
+        add(s.target, name, 'nucleus', add3(mirror(nucleus(s.target).centre, side), mirror([4, -4, -1], side)), side)
+        if (s.target === 'stn') {
+          add('sn', 'Substantia nigra', 'nucleus', mirror(nucleus('sn').centre, side), side)
+          add('rn', 'Red nucleus', 'nucleus', mirror(nucleus('rn').centre, side), side)
+          add('ic', 'Internal capsule', 'nucleus', mirror([17.6, -11, -1], side), side)
+          add('oc', 'Oculomotor fibres', 'nucleus', mirror([10.3, -15.2, -9.5], side), side)
+        } else if (s.target === 'gpi') add('gpe', 'GPe', 'nucleus', mirror(nucleus('gpe').centre, side), side)
+        else add('stnv', 'STN', 'nucleus', mirror(nucleus('stn').centre, side), side)
         if (lead) {
           lead.geometry.contacts.forEach((c, i) => add('c' + i, String(i), 'contact', c, side))
           if (s.revealed) add('edge', 'β edge', 'edge', lead.geometry.edge, side)
+          if (s.revealed && s.lead === 'directional' && lead.arrow.userData.tip) add('dir', 'β direction', 'edge', lead.arrow.userData.tip as Vec3, side)
         }
       } else {
         if (s.view !== 'sagittal') {
-          for (const side of SIDES) add('stn' + side, (side === 'L' ? 'Left' : 'Right') + ' STN', 'nucleus', mirror(nucleus('stn').centre, side), side)
-          add('gpi', 'GPi', 'nucleus', mirror(nucleus('gpi').centre, 'R'), 'R')
+          for (const side of SIDES) add('stn' + side, (side === 'L' ? 'Left ' : 'Right ') + nucleus(s.target).short, 'nucleus', mirror(nucleus(s.target).centre, side), side)
+          if (s.target !== 'gpi') add('gpi', 'GPi', 'nucleus', mirror(nucleus('gpi').centre, 'R'), 'R')
           add('put', 'Putamen', 'nucleus', mirror(nucleus('putamen').centre, 'R'), 'R')
           add('thal', 'Thalamus', 'nucleus', mirror(nucleus('thalamus').centre, 'L'), 'L')
         } else {
-          add('stnL', 'STN', 'nucleus', mirror(nucleus('stn').centre, 'L'), 'L')
+          add('stnL', nucleus(s.target).short, 'nucleus', mirror(nucleus(s.target).centre, 'L'), 'L')
           add('thal', 'Thalamus', 'nucleus', mirror(nucleus('thalamus').centre, 'L'), 'L')
           add('cd', 'Caudate', 'nucleus', mirror([12, 15, 9], 'L'), 'L')
           add('rn', 'Red nucleus', 'nucleus', mirror(nucleus('rn').centre, 'L'), 'L')
@@ -503,8 +713,8 @@ export class BrainScene {
       const g = this.leads[side]!.geometry
       const centre = new THREE.Vector3(...g.contacts[1]).lerp(new THREE.Vector3(...g.contacts[2]), 0.5)
       const d = new THREE.Vector3(...g.direction)
-      // Look from in front and to the side, perpendicular to the lead.
-      const lateral = new THREE.Vector3(side === 'L' ? -1 : 1, 0.9, 0.15)
+      // Look from the front, slightly lateral and perpendicular to the lead, so lateral pathways sit beside it.
+      const lateral = new THREE.Vector3(side === 'L' ? -0.45 : 0.45, 1, -0.35)
       const view = lateral.sub(d.clone().multiplyScalar(lateral.dot(d))).normalize()
       target = this.world(centre.toArray() as Vec3)
       eye = this.world(centre.clone().addScaledVector(view, 30).toArray() as Vec3)
@@ -591,7 +801,7 @@ export class BrainScene {
     if (slow || moving || this.dirty) {
       const live = this.live()
       for (const side of SIDES) {
-        const stn = this.nuclei.get(side + 'stn')!
+        const stn = this.nuclei.get(side + (this.state?.target ?? 'stn'))!
         const level = Math.min(1.2, live.beta[side] / 1.1)
         const glow = stn.material.uniforms.glow
         const next = glow.value + (level - glow.value) * 0.45
@@ -604,8 +814,17 @@ export class BrainScene {
         const show = mA > 0.02 && k !== undefined && k !== null
         if (show !== lead.vta.visible) animated = true
         lead.vta.visible = show
+        const pw = this.state?.pulseWidth ?? 60
+        const hit = show && this.state?.border ? reached(side, this.state.border[side], k!, mA, pw).map((p) => p.id) : []
+        for (const p of PATHWAYS) {
+          const u = this.pathways.get(side + p.id)!.material.uniforms
+          const goal = hit.includes(p.id) ? 1 : 0
+          if (u.glow.value !== goal) animated = true
+          u.glow.value = goal
+          u.opacity.value = goal ? 0.55 : 0.16
+        }
         if (show) {
-          lead.vta.scale.setScalar(activationRadius(mA))
+          lead.vta.scale.setScalar(radius(mA, pw))
           lead.vta.position.set(...lead.geometry.contacts[k!])
           lead.vta.material.uniforms.time.value = t
           lead.vta.material.uniforms.strength.value = Math.min(1, mA / 1.5)
@@ -625,7 +844,7 @@ export class BrainScene {
       h = this.host.clientHeight
     const camDir = new THREE.Vector3()
     this.camera.getWorldDirection(camDir)
-    const placed: { x: number; y: number; w: number }[] = []
+    const placed: { x: number; y: number; w: number; h: number }[] = []
     for (const l of this.labels) {
       l.el ??= this.labelRoot?.querySelector<HTMLElement>(`[data-label="${l.id}"]`) ?? undefined
       if (!l.el) continue
@@ -633,16 +852,23 @@ export class BrainScene {
       const behind = l.world.clone().sub(this.camera.position).dot(camDir) < 0
       const x = (p.x * 0.5 + 0.5) * w
       let y = (0.5 - p.y * 0.5) * h
-      const width = l.el.offsetWidth || 60
-      // Contact numbers sit beside their contact; other labels step down past earlier ones.
-      if (l.kind !== 'contact')
-        for (let tries = 0; tries < 4; tries++) {
-          const hit = placed.find((q) => Math.abs(q.y - y) < 20 && x < q.x + q.w + 6 && q.x < x + width + 6)
-          if (!hit) break
-          y = hit.y + 22
+      const width = l.el.offsetWidth || 60,
+        height = l.el.offsetHeight || 24
+      // Contact numbers sit beside their contact; other labels step down past earlier ones,
+      // using their measured size, and are left out if there is still no room.
+      let crowded = false
+      if (l.kind !== 'contact') {
+        const hit = () => placed.find((q) => Math.abs(q.y - y) < (q.h + height) / 2 + 2 && x < q.x + q.w + 6 && q.x < x + width + 6)
+        for (let tries = 0, q = hit(); q; q = hit()) {
+          if (++tries > 6) {
+            crowded = true
+            break
+          }
+          y = q.y + (q.h + height) / 2 + 3
         }
-      const hidden = behind || x < 4 || y < 40 || x > w - 40 || y > h - 48
-      if (!hidden && l.kind !== 'contact') placed.push({ x, y, w: width })
+      }
+      const hidden = behind || crowded || x < 4 || y < 40 || x > w - 40 || y > h - 48
+      if (!hidden && l.kind !== 'contact') placed.push({ x, y, w: width, h: height })
       l.el.style.opacity = hidden ? '0' : '1'
       l.el.style.transform = `translate(${x.toFixed(1)}px, ${(y - 9).toFixed(1)}px)`
     }

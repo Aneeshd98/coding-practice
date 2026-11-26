@@ -149,7 +149,7 @@ export function Chart({
           <g key={i}>
             <rect x={Math.max(L, X(b.from))} y={T} width={Math.max(1, Math.min(L + pw, X(b.to)) - Math.max(L, X(b.from)))} height={ph} fill={b.color} />
             {b.label && (
-              <text className="band-label" x={Math.max(L, X(b.from)) + 6} y={T + 13} fill={b.labelColor ?? 'currentColor'}>
+              <text className="band-label" x={Math.max(L, X(b.from)) + 6} y={T + ph - 7} fill={b.labelColor ?? 'currentColor'}>
                 {b.label}
               </text>
             )}

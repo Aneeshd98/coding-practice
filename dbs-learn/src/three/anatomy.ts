@@ -49,6 +49,7 @@ export const NUCLEI: Nucleus[] = [
   { id: 'stn', name: 'Subthalamic nucleus', short: 'STN', color: '#f2a65a', centre: [12, -13, -4], radii: [6.5, 3.4, 2.8], axes: STN_AXES },
   { id: 'rn', name: 'Red nucleus', short: 'RN', color: '#e86f6f', centre: [5, -20, -8], radii: [3.2, 3.2, 3.6] },
   { id: 'sn', name: 'Substantia nigra', short: 'SN', color: '#6b6f86', centre: [10, -17, -11], radii: [9, 4.5, 1.6], axes: frame([0.45, -0.85, 0.12]) },
+  { id: 'vim', name: 'Ventral intermediate nucleus (thalamus)', short: 'VIM', color: '#b48ef0', centre: [14, -18, 2], radii: [3.5, 3, 4] },
   {
     id: 'caudate',
     name: 'Caudate nucleus',
@@ -112,13 +113,16 @@ export interface LeadGeometry {
   top: Vec3
 }
 
+export type Target = 'stn' | 'gpi' | 'vim'
+/** Aim points within each target: dorsolateral STN, posteroventral GPi, and the VIM itself. */
+const AIM: Record<Target, Vec3> = { stn: [1, -1, 0.6], gpi: [0.5, -2, -1.5], vim: [0, 0, 0] }
+
 /** Places a lead so that the generator edge sits `border` mm above contact 0, as in the signal model. */
-export function leadGeometry(side: Side, border: number): LeadGeometry {
-  const stn = nucleus('stn')
+export function leadGeometry(side: Side, border: number, target: Target = 'stn'): LeadGeometry {
+  const n = nucleus(target)
   const direction = leadDirection(side)
-  // Aim slightly dorsolateral to the STN centre: the motor territory.
-  const aim = add(mirror(stn.centre, side), mirror([1, -1, 0.6], side))
-  const edge = exitPoint(stn, side, aim, direction)
+  const aim = add(mirror(n.centre, side), mirror(AIM[target], side))
+  const edge = exitPoint(n, side, aim, direction)
   const first = add(edge, scale(direction, -border))
   const contacts = Array.from({ length: CONTACTS }, (_, c) => add(first, scale(direction, c * PITCH_MM)))
   return {
@@ -131,5 +135,3 @@ export function leadGeometry(side: Side, border: number): LeadGeometry {
   }
 }
 
-/** Approximate radius (mm) of tissue activated around a stimulating contact, for illustration only. */
-export const activationRadius = (mA: number) => (mA > 0 ? 1.2 + 0.95 * Math.sqrt(mA) * 1.25 : 0)

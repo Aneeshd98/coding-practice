@@ -23,31 +23,78 @@ export const ch = (side: Side, contact: number) => (side === 'L' ? 0 : 4) + cont
 /** Height of a contact centre above contact 0, the deepest contact. */
 export const contactZ = (contact: number) => contact * PITCH_MM
 
-/** Witness lanes: the heart, delivered stimulation (mA), true burst state, and the true beta envelope. */
-export const LANE = { neural: 8, ecg: 16, stimL: 17, stimR: 18, burstL: 19, burstR: 20, betaL: 21, betaR: 22 } as const
-export const STRIDE = 23
+/**
+ * Witness lanes: the heart, delivered stimulation (mA), true burst state, the true beta envelope,
+ * and the adaptive controller's own beta estimate (µV).
+ */
+export const LANE = { neural: 8, ecg: 16, stimL: 17, stimR: 18, burstL: 19, burstR: 20, betaL: 21, betaR: 22, senseL: 23, senseR: 24, accel: 25, segments: 26 } as const
+export const STRIDE = 38
+/** Directional leads split contact levels 1 and 2 into segments a, b and c, 120° apart (a faces anterior). */
+export const SEGMENTS = ['a', 'b', 'c'] as const
+export const SEGMENT_ANGLE = [0, 120, 240]
+export const segLane = (side: Side, level: 1 | 2, segment: number) => LANE.segments + (side === 'L' ? 0 : 6) + (level - 1) * 3 + segment
+/** The contact, and segment for a directional lane, that a recorded lane belongs to. */
+export function laneContact(lane: number): { contact: number; segment?: number } {
+  if (lane < LANE.segments) return { contact: lane % 4 }
+  const k = (lane - LANE.segments) % 6
+  return { contact: 1 + Math.floor(k / 3), segment: k % 3 }
+}
 
 export type Movement = 'rest' | 'left' | 'right'
+/** Parkinson's disease (STN), dystonia (GPi) or essential tremor (VIM thalamus). */
+export type Disorder = 'pd' | 'dystonia' | 'tremor'
+export const TARGET_OF = { pd: 'stn', dystonia: 'gpi', tremor: 'vim' } as const
+export const DISORDERS: { id: Disorder; label: string; target: string }[] = [
+  { id: 'pd', label: 'Parkinson’s disease', target: 'STN' },
+  { id: 'dystonia', label: 'Dystonia', target: 'GPi' },
+  { id: 'tremor', label: 'Essential tremor', target: 'VIM' },
+]
 export interface StimSettings {
   on: boolean
   contact: Record<Side, number>
   amplitude: number
   frequency: number
+  /** Pulse width (µs). */
+  pulseWidth: number
+}
+/** Single-threshold adaptive DBS: amplitude ramps up while sensed beta exceeds the threshold. */
+export interface AdaptiveSettings {
+  on: boolean
+  /** Centre of the ±3 Hz sensing band (Hz). */
+  centre: number
+  /** Beta amplitude threshold (µV). */
+  threshold: number
+  /** Ramp speed (mA per second). */
+  ramp: number
+  /** Time constant of the smoothed beta estimate (s). */
+  smoothing: number
+  min: number
+  max: number
 }
 export interface Config {
   medication: 'off' | 'on'
   movement: Movement
   stim: StimSettings
+  adaptive: AdaptiveSettings
   ecg: boolean
+  /** Peak-dose dyskinesia; only expressed while levodopa is ON. */
+  dyskinesia: boolean
+  disorder: Disorder
+  lead: 'ring' | 'directional'
 }
-export type ConfigPatch = Partial<Omit<Config, 'stim'>> & {
+export type ConfigPatch = Partial<Omit<Config, 'stim' | 'adaptive'>> & {
   stim?: Partial<Omit<StimSettings, 'contact'>> & { contact?: Partial<Record<Side, number>> }
+  adaptive?: Partial<AdaptiveSettings>
 }
 export const INITIAL: Config = {
   medication: 'off',
   movement: 'rest',
-  stim: { on: false, contact: { L: 1, R: 1 }, amplitude: 2, frequency: 130 },
+  stim: { on: false, contact: { L: 1, R: 1 }, amplitude: 2, frequency: 130, pulseWidth: 60 },
+  adaptive: { on: false, centre: 20, threshold: 1.0, ramp: 6, smoothing: 0.25, min: 0, max: 3 },
   ecg: true,
+  dyskinesia: false,
+  disorder: 'pd',
+  lead: 'ring',
 }
 export function applyPatch(config: Config, patch: ConfigPatch): Config {
   return {
@@ -58,6 +105,7 @@ export function applyPatch(config: Config, patch: ConfigPatch): Config {
       ...patch.stim,
       contact: { ...config.stim.contact, ...patch.stim?.contact },
     },
+    adaptive: { ...config.adaptive, ...patch.adaptive },
   }
 }
 
@@ -78,6 +126,14 @@ export interface Subject {
   /** Height (mm above contact 0) of the dorsal edge of the beta-generating motor region. */
   border: Record<Side, number>
   gain: Record<Side, number>
+  /** Frequency of dyskinesia-related narrowband gamma (Hz). */
+  gammaHz: Record<Side, number>
+  /** Pallidal low-frequency (theta/alpha) peak in dystonia (Hz). */
+  thetaHz: Record<Side, number>
+  /** Essential tremor frequency (Hz). */
+  tremorHz: number
+  /** Direction (degrees from anterior, towards lateral) in which the beta generator lies from the lead. */
+  betaAngle: Record<Side, number>
 }
 
 export function randomGenerator(seed: number) {
@@ -95,11 +151,17 @@ export function makeSubject(seed: number): Subject {
   const side = () => ({ hz: Math.round((16 + 10 * r()) * 10) / 10, border: 1.3 + 3.4 * r(), gain: 0.8 + 0.4 * r() })
   const L = side(),
     R = side()
+  // Properties added later draw from their own stream so existing patients keep their values.
+  const extra = randomGenerator(seed ^ 0x6a33a)
   return {
     seed,
     betaHz: { L: L.hz, R: R.hz },
     border: { L: L.border, R: R.border },
     gain: { L: L.gain, R: R.gain },
+    gammaHz: { L: Math.round((66 + 16 * extra()) * 10) / 10, R: Math.round((66 + 16 * extra()) * 10) / 10 },
+    thetaHz: { L: Math.round((5 + 4 * extra()) * 10) / 10, R: Math.round((5 + 4 * extra()) * 10) / 10 },
+    tremorHz: Math.round((4.5 + 2.5 * extra()) * 10) / 10,
+    betaAngle: { L: Math.round(360 * extra()), R: Math.round(360 * extra()) },
   }
 }
 
@@ -126,12 +188,22 @@ export class Generator {
   private length = [1, 1]
   private amp = [0, 0]
   private med: number
+  private dysk = 0
+  private posture = [0, 0]
+  private gammaPhase = [0.3, 2.1]
+  /** Segments have their own noise stream so ring channels keep their exact samples. */
+  private segRandom: () => number
+  private segNoise = new Float64Array(12)
   private moveF = [1, 1]
   private rebound = [0, 0]
   private stimF = [0, 0]
   private ramp = [0, 0]
   private beat = 0.3
   private rate = 1.15
+  /** Adaptive controller state per side: delivered amplitude, band-pass memory, smoothed estimate. */
+  private adaptAmp = [0, 0]
+  private bp = new Float64Array(8)
+  private estimate = [0, 0]
 
   constructor(seed = 7, config: ConfigPatch = {}) {
     this.config = applyPatch(INITIAL, config)
@@ -139,6 +211,7 @@ export class Generator {
     this.noise = randomGenerator(seed)
     this.bursts = randomGenerator(seed ^ 0xb0b)
     this.heart = randomGenerator(seed ^ 0xec9)
+    this.segRandom = randomGenerator(seed ^ 0x5e9)
     this.med = this.config.medication === 'on' ? 1 : 0
     this.states.push({ sample: 0, config: this.config })
   }
@@ -182,6 +255,7 @@ export class Generator {
         o = n * STRIDE
       // Levodopa effect compressed into seconds for teaching (time constant 4 s).
       this.med += ((cfg.medication === 'on' ? 1 : 0) - this.med) / (4 * FS)
+      this.dysk += ((cfg.dyskinesia ? this.med : 0) - this.dysk) / (2 * FS)
       this.beat += this.rate / FS
       if (this.beat >= 1) {
         this.beat -= 1
@@ -202,17 +276,28 @@ export class Generator {
           this.rebound[si]--
         }
         this.moveF[si] += (target - this.moveF[si]) / (0.12 * FS)
-        const k = cfg.stim.contact[side],
-          amp = cfg.stim.amplitude
-        const want = cfg.stim.on && amp > 0 ? 1 : 0
+        const k = cfg.stim.contact[side]
+        const adaptive = cfg.adaptive.on && cfg.stim.on
+        const amp = adaptive ? this.adaptAmp[si] : cfg.stim.amplitude
+        const want = cfg.stim.on && (adaptive || amp > 0) ? 1 : 0
         // Soft start: amplitude ramps over half a second.
         this.ramp[si] = Math.max(0, Math.min(1, this.ramp[si] + (want ? 1 : -1) / (0.5 * FS)))
         const reach = Math.exp(-((contactZ(k) - (border - 1)) ** 2) / (2 * 2.2 ** 2))
-        const effect = this.ramp[si] * (amp / (amp + 1.5)) * reach
-        this.stimF[si] += (effect - this.stimF[si]) / (0.8 * FS)
+        // Charge per pulse matters: express the amplitude as its 60 µs equivalent (strength–duration, chronaxie 40 µs).
+        const pw = cfg.stim.pulseWidth || 60
+        const equivalent = (amp * (1 + 40 / 60)) / (1 + 40 / pw)
+        const effect = this.ramp[si] * (equivalent / (equivalent + 1.5)) * reach
+        // Suppression builds within a few hundred milliseconds and outlasts the stimulation by about a second.
+        this.stimF[si] += (effect - this.stimF[si]) / ((effect > this.stimF[si] ? 0.25 : 1.2) * FS)
         const sf = this.stimF[si]
-        const rate = lerp(1.0, 1.3, this.med) * (1 - 0.45 * sf)
-        const meanDuration = lerp(0.45, 0.2, this.med) * (1 - 0.5 * sf)
+        const pd = cfg.disorder === 'pd',
+          tremor = cfg.disorder === 'tremor'
+        // Levodopa acts on the parkinsonian STN rhythm only.
+        const med = pd ? this.med : 0
+        const rate = lerp(1.0, 1.3, med) * (1 - 0.45 * sf)
+        const meanDuration = lerp(0.45, 0.2, med) * (1 - 0.5 * sf)
+        // Essential tremor: a tremor-frequency rhythm with posture or action, mostly opposite the active hand.
+        this.posture[si] += ((cfg.movement === 'rest' ? 0.05 : contra ? 1 : 0.3) - this.posture[si]) / (0.4 * FS)
         if (this.remaining[si] <= 0 && this.bursts() < rate / FS) {
           const u = Math.max(1e-9, this.bursts()),
             g = Math.sqrt(-2 * Math.log(u)) * Math.cos(TAU * this.bursts())
@@ -220,7 +305,7 @@ export class Generator {
           this.remaining[si] = this.length[si]
           this.amp[si] = 0.75 + 0.5 * this.bursts()
         }
-        let envelope = lerp(0.2, 0.1, this.med),
+        let envelope = lerp(0.2, 0.1, med),
           inBurst = 0
         if (this.remaining[si] > 0) {
           const u = 1 - this.remaining[si] / this.length[si]
@@ -228,19 +313,27 @@ export class Generator {
           this.remaining[si]--
           inBurst = 1
         }
-        const level = sub.gain[side] * this.moveF[si] * (1 - 0.8 * sf) * lerp(1, 0.95, this.med)
-        this.phase[si] += (TAU * (sub.betaHz[side] + 0.8 * Math.sin(0.27 * t + 1.3 * si))) / FS
+        if (tremor) envelope = 0.15 + this.posture[si]
+        const level = sub.gain[side] * (pd ? this.moveF[si] : 1) * (1 - 0.8 * sf) * lerp(1, 0.95, med)
+        const centre = pd ? sub.betaHz[side] : tremor ? sub.tremorHz : sub.thetaHz[side]
+        this.phase[si] += (TAU * (centre + (pd ? 0.8 : 0.25) * Math.sin(0.27 * t + 1.3 * si))) / FS
         const beta = 3.6 * level * envelope * Math.sin(this.phase[si])
+        // Narrowband gamma with dyskinesia; under stimulation it entrains to half the stimulation frequency.
+        const half = cfg.stim.frequency / 2
+        const entrained = this.ramp[si] > 0.5 && half >= 55 && half <= 95
+        this.gammaPhase[si] += (TAU * (entrained ? half : sub.gammaHz[side] + 0.6 * Math.sin(0.19 * t + si))) / FS
+        const gamma = 1.6 * this.dysk * Math.sin(this.gammaPhase[si])
         const far = (this.shared[si] = 0.995 * this.shared[si] + 0.42 * this.gauss())
         const stimAmp = 250 * amp * this.ramp[si]
         const f = cfg.stim.frequency
         // The artifact after the analog anti-alias stage: the fundamental plus a weak harmonic.
         const wave = stimAmp ? Math.sin(TAU * f * t + 0.4) + 0.12 * Math.sin(2 * TAU * f * t + 1.1) : 0
+        const acquired = [0, 0, 0, 0]
         for (let c = 0; c < CONTACTS; c++) {
           const i = si * 4 + c
           const slow = (this.local[2 * i] = 0.97 * this.local[2 * i] + 0.2 * this.gauss())
           const fast = (this.local[2 * i + 1] = 0.5 * this.local[2 * i + 1] + 0.45 * this.gauss())
-          const neural = betaWeight(contactZ(c), border) * beta + far + slow + fast
+          const neural = betaWeight(contactZ(c), border) * (beta + gamma) + far + slow + fast
           // The implant case is the reference and sits in the chest, so the heart is a shared input.
           const cardiac = cfg.ecg ? ecg * 0.025 * (1 + 0.018 * c) * (si ? 0.8 : 1) : 0
           let artifact = 0
@@ -249,12 +342,48 @@ export class Generator {
             // Slight tissue asymmetry keeps the flanking-pair residual small but non-zero.
             artifact = ((stimAmp * (c > k ? 1.03 : 1)) / (1 + d / 0.75)) * wave
           }
-          out[o + i] = neural + cardiac + artifact
+          out[o + i] = acquired[c] = neural + cardiac + artifact
           out[o + LANE.neural + i] = neural
+          if (c === 1 || c === 2) {
+            // Each segment sees the generator more strongly the more it faces it; the three average to the ring.
+            let sum = 0
+            for (let g = 0; g < 3; g++) {
+              const n = si * 6 + (c - 1) * 3 + g
+              this.segNoise[n] = 0.6 * this.segNoise[n] + 0.5 * (this.segRandom() - 0.5)
+              const facing = 1 + 0.75 * Math.cos(((SEGMENT_ANGLE[g] - sub.betaAngle[side]) * Math.PI) / 180)
+              const v = betaWeight(contactZ(c), border) * (beta * facing + gamma) + far + slow + fast + this.segNoise[n] + cardiac + artifact
+              out[o + segLane(side, c as 1 | 2, g)] = v
+              sum += v
+            }
+            // A directional lead's ring reading is the mean of its segments.
+            if (cfg.lead === 'directional') out[o + i] = acquired[c] = sum / 3
+          }
         }
+        // The controller senses the pair flanking the stimulating contact; without one it must use a pair that contains it.
+        const [a, b] = k >= 1 && k <= 2 ? [k - 1, k + 1] : k === 0 ? [0, 1] : [2, 3]
+        const sensed = Math.max(-RANGE_UV, Math.min(RANGE_UV, acquired[a] - acquired[b]))
+        const ad = cfg.adaptive
+        const w = (TAU * ad.centre) / FS,
+          alpha = Math.sin(w) / (2 * (ad.centre / 6)),
+          a0 = 1 + alpha
+        const m = si * 4,
+          y = (alpha / a0) * sensed - (alpha / a0) * this.bp[m + 1] + ((2 * Math.cos(w)) / a0) * this.bp[m + 2] - ((1 - alpha) / a0) * this.bp[m + 3]
+        this.bp[m + 1] = this.bp[m]
+        this.bp[m] = sensed
+        this.bp[m + 3] = this.bp[m + 2]
+        this.bp[m + 2] = y
+        this.estimate[si] += ((Math.abs(y) * Math.PI) / 2 - this.estimate[si]) / Math.max(1, ad.smoothing * FS)
+        if (adaptive) {
+          const step = ad.ramp / FS
+          this.adaptAmp[si] = Math.max(ad.min, Math.min(ad.max, this.adaptAmp[si] + (this.estimate[si] > ad.threshold ? step : -step)))
+        } else this.adaptAmp[si] = cfg.adaptive.min
+        out[o + (si ? LANE.senseR : LANE.senseL)] = this.estimate[si]
         out[o + (si ? LANE.burstR : LANE.burstL)] = inBurst
         out[o + (si ? LANE.stimR : LANE.stimL)] = this.ramp[si] * amp
         out[o + (si ? LANE.betaR : LANE.betaL)] = level * envelope
+        // The accelerometer sits on the active hand, whose tremor is driven by the opposite thalamus.
+        if (tremor && contra)
+          out[o + LANE.accel] = 80 * this.posture[si] * (1 - 0.85 * sf) * (0.85 + 0.15 * Math.sin(0.9 * t) + 0.08 * Math.sin(2.3 * t)) * Math.sin(this.phase[si] - 0.6)
       }
     }
     return out

@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Brain, Crosshair, Eye, EyeOff, Maximize2, Minimize2, RotateCcw, Tag } from 'lucide-react'
+import { Brain, Crosshair, Eye, EyeOff, Layers, Maximize2, Minimize2, RotateCcw, Tag } from 'lucide-react'
 import { useLab, useTick } from '../app/lab'
-import { FS, LANE, type Side } from '../sim/model'
+import { FS, LANE, TARGET_OF, laneContact, type Side } from '../sim/model'
 import { rowNamed } from '../dsp/store'
-import { BrainScene, type CortexMode, type Label, type ViewPreset } from '../three/BrainScene'
+import { BrainScene, type CortexMode, type Label, type SliceMode, type ViewPreset } from '../three/BrainScene'
 import { LeadSchematic } from './LeadSchematic'
 
 const VIEWS: { id: ViewPreset; label: string }[] = [
@@ -38,6 +38,7 @@ export function BrainPanel() {
   const [cortex, setCortex] = useState<CortexMode>('glass')
   const [head, setHead] = useState(true)
   const [showLabels, setShowLabels] = useState(true)
+  const [slice, setSlice] = useState<SliceMode>('off')
   const [expanded, setExpanded] = useState(false)
   const webgl = useWebGL()
   const live = useRef(l)
@@ -86,13 +87,18 @@ export function BrainPanel() {
     scene.current?.update({
       border: l.subject?.border ?? null,
       revealed: l.revealed,
-      sensing: focus ? { side: focus.side, contacts: [focus.a % 4, ...(focus.b < 0 ? [] : [focus.b % 4])] } : null,
+      sensing: focus ? { side: focus.side, parts: [laneContact(focus.a), ...(focus.b < 0 ? [] : [laneContact(focus.b)])] } : null,
+      lead: l.config.lead,
+      betaAngle: l.subject?.betaAngle ?? null,
       stimContact: delivered.stim.on ? delivered.stim.contact : null,
+      pulseWidth: delivered.stim.pulseWidth ?? 60,
+      target: TARGET_OF[l.config.disorder],
       cortex,
       head,
       view,
       targetSide: side,
       labels: showLabels,
+      slice,
     })
   })
 
@@ -163,7 +169,7 @@ export function BrainPanel() {
             <div className="vp-bottom">
               <div className="legend3d">
                 <span>
-                  <i className="sw stn" /> STN · glows with beta
+                  <i className="sw stn" /> {({ stn: 'STN', gpi: 'GPi', vim: 'VIM' } as const)[TARGET_OF[l.config.disorder]]} · glows with {l.config.disorder === 'pd' ? 'beta' : l.config.disorder === 'tremor' ? 'tremor rhythm' : 'θ/α rhythm'}
                 </span>
                 <span>
                   <i className="sw sense" /> sensing pair
@@ -178,12 +184,24 @@ export function BrainPanel() {
                     Head
                   </button>
                 )}
+                <label className="chip-btn chip-select" title="An MRI template slice through the target">
+                  <Layers size={12} /> MRI
+                  <select aria-label="MRI slice" value={slice} onChange={(e) => setSlice(e.target.value as SliceMode)}>
+                    {(['off', 'axial', 'coronal', 'sagittal'] as SliceMode[]).map((m) => (
+                      <option key={m} value={m}>
+                        {m === 'off' ? 'Off' : m[0].toUpperCase() + m.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <button className="chip-btn" aria-pressed={showLabels} onClick={() => setShowLabels(!showLabels)}>
                   <Tag size={12} /> Labels
                 </button>
-                <button className="chip-btn beta" aria-pressed={l.revealed} onClick={() => l.setRevealed(!l.revealed)}>
-                  {l.revealed ? <EyeOff size={12} /> : <Eye size={12} />} {l.revealed ? 'Hide' : 'Reveal'} β region
-                </button>
+                {!l.exam && (
+                  <button className="chip-btn beta" aria-pressed={l.revealed} onClick={() => l.setRevealed(!l.revealed)}>
+                    {l.revealed ? <EyeOff size={12} /> : <Eye size={12} />} {l.revealed ? 'Hide' : 'Reveal'} β region
+                  </button>
+                )}
               </div>
             </div>
             {loading && <div className="vp-status">Loading anatomy…</div>}
@@ -197,7 +215,7 @@ export function BrainPanel() {
           <b>Sensing</b> {sensing}
         </span>
         <span className="kv">
-          <b>Stimulation</b> {stim.on ? `L${stim.contact.L} · R${stim.contact.R} · ${stim.amplitude.toFixed(1)} mA · ${stim.frequency} Hz` : 'off'}
+          <b>Stimulation</b> {stim.on ? `L${stim.contact.L} · R${stim.contact.R} · ${l.config.adaptive.on ? 'adaptive ≤ ' + l.config.adaptive.max : stim.amplitude.toFixed(1)} mA · ${stim.frequency} Hz` : 'off'}
         </span>
         <span className="kv muted">{usable ? 'Drag to rotate · scroll to zoom · nuclei are schematic' : 'Deep nuclei are schematic'}</span>
       </footer>
