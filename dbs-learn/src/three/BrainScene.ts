@@ -7,6 +7,7 @@ import { PATHWAYS, radius, reached } from '../sim/field'
 
 export type CortexMode = 'glass' | 'solid' | 'hidden'
 export type ViewPreset = 'overview' | 'coronal' | 'sagittal' | 'target'
+export type SliceMode = 'off' | 'axial' | 'coronal' | 'sagittal'
 
 export interface SceneState {
   border: Record<Side, number> | null
@@ -24,6 +25,8 @@ export interface SceneState {
   view: ViewPreset
   targetSide: Side
   labels: boolean
+  /** An MRI template slice through the target: off, or the plane's orientation. */
+  slice: SliceMode
 }
 export interface LiveSignals {
   beta: Record<Side, number>
@@ -122,6 +125,27 @@ void main() {
   gl_FragColor = vec4(color * (0.6 + fresnel), strength * (0.1 + 0.55 * fresnel) * pulse);
 }`
 
+/** MRI slice: the plane's vertices are template millimetres, sampled from the 3D texture. */
+const sliceVertex = /* glsl */ `
+varying vec3 vMni;
+void main() {
+  vMni = position;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`
+const sliceFragment = /* glsl */ `
+precision highp sampler3D;
+uniform sampler3D volume;
+uniform vec3 origin;
+uniform vec3 size;
+varying vec3 vMni;
+void main() {
+  float v = texture(volume, (vMni - origin + 0.5) / size).r;
+  // 0 marks voxels outside the template's brain mask.
+  if (v < 0.5 / 255.0) discard;
+  float g = 0.04 + 0.7 * (v * 255.0 - 1.0) / 254.0;
+  gl_FragColor = vec4(vec3(g), 1.0);
+}`
+
 function taperedTube(points: { at: Vec3; r: number }[], side: Side) {
   const curve = new THREE.CatmullRomCurve3(points.map((p) => new THREE.Vector3(...mirror(p.at, side))))
   const segments = 96,
@@ -202,6 +226,9 @@ export class BrainScene {
   private nuclei = new Map<string, THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>>()
   private pathways = new Map<string, THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial>>()
   private leads: Partial<Record<Side, LeadParts>> = {}
+  private base = ''
+  private volume: { origin: Vec3; shape: Vec3; mesh: THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial> } | null = null
+  private volumeRequested = false
   private state: SceneState | null = null
   private tween: { from: [THREE.Vector3, THREE.Vector3]; to: [THREE.Vector3, THREE.Vector3]; start: number } | null = null
   private clock = new THREE.Clock()
@@ -263,6 +290,7 @@ export class BrainScene {
   }
 
   async load(url: string) {
+    this.base = url
     const [meta, bin] = await Promise.all([
       fetch(url + 'brain.json').then((r) => {
         if (!r.ok) throw new Error('Anatomy manifest unavailable')
@@ -314,6 +342,86 @@ export class BrainScene {
     if (this.state) this.update(this.state, true)
     this.dirty = true
     this.onReady()
+  }
+
+  /** The MRI template volume, fetched the first time a slice is shown. */
+  private async loadVolume() {
+    this.volumeRequested = true
+    try {
+      const [meta, bin] = await Promise.all([
+        fetch(this.base + 'mri.json').then((r) => {
+          if (!r.ok) throw new Error('MRI manifest unavailable')
+          return r.json() as Promise<{ origin: Vec3; shape: Vec3 }>
+        }),
+        fetch(this.base + 'mri.bin').then((r) => {
+          if (!r.ok) throw new Error('MRI volume unavailable')
+          return r.arrayBuffer()
+        }),
+      ])
+      const texture = new THREE.Data3DTexture(new Uint8Array(bin), ...meta.shape)
+      texture.format = THREE.RedFormat
+      texture.type = THREE.UnsignedByteType
+      texture.minFilter = texture.magFilter = THREE.LinearFilter
+      texture.unpackAlignment = 1
+      texture.needsUpdate = true
+      const geometry = new THREE.BufferGeometry()
+      geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(12), 3))
+      geometry.setIndex([0, 1, 2, 0, 2, 3])
+      const mesh = new THREE.Mesh(
+        geometry,
+        new THREE.ShaderMaterial({
+          vertexShader: sliceVertex,
+          fragmentShader: sliceFragment,
+          uniforms: { volume: { value: texture }, origin: { value: new THREE.Vector3(...meta.origin) }, size: { value: new THREE.Vector3(...meta.shape) } },
+          side: THREE.DoubleSide,
+        }),
+      )
+      mesh.renderOrder = 1
+      mesh.frustumCulled = false
+      this.root.add(mesh)
+      this.volume = { origin: meta.origin, shape: meta.shape, mesh }
+      if (this.state) this.update(this.state)
+    } catch {
+      this.volumeRequested = false
+    }
+  }
+
+  /** Place the slice through the target: between the middle contacts if a lead is there, else the nucleus centre. */
+  private placeSlice(state: SceneState) {
+    if (state.slice === 'off') {
+      if (this.volume) this.volume.mesh.visible = false
+      return
+    }
+    if (!this.volume) {
+      if (!this.volumeRequested && this.base) void this.loadVolume()
+      return
+    }
+    const { origin, shape, mesh } = this.volume
+    const lead = this.leads[state.targetSide]
+    const at = lead
+      ? (new THREE.Vector3(...lead.geometry.contacts[1]).lerp(new THREE.Vector3(...lead.geometry.contacts[2]), 0.5).toArray() as Vec3)
+      : mirror(nucleus(state.target).centre, state.targetSide)
+    const axis = { sagittal: 0, coronal: 1, axial: 2 }[state.slice]
+    const [u, v] = [0, 1, 2].filter((a) => a !== axis)
+    const lo = origin,
+      hi = origin.map((o, a) => o + shape[a] - 1)
+    const fixed = Math.max(lo[axis], Math.min(hi[axis], at[axis]))
+    const corners = [
+      [lo[u], lo[v]],
+      [hi[u], lo[v]],
+      [hi[u], hi[v]],
+      [lo[u], hi[v]],
+    ]
+    const position = mesh.geometry.getAttribute('position') as THREE.BufferAttribute
+    corners.forEach(([cu, cv], i) => {
+      const p = [0, 0, 0]
+      p[axis] = fixed
+      p[u] = cu
+      p[v] = cv
+      position.setXYZ(i, p[0], p[1], p[2])
+    })
+    position.needsUpdate = true
+    mesh.visible = true
   }
 
   private buildNuclei() {
@@ -548,6 +656,7 @@ export class BrainScene {
       }
       for (const p of PATHWAYS) this.pathways.get(side + p.id)!.visible = state.target === 'stn' && ((target && side === state.targetSide) || state.view === 'coronal')
     }
+    this.placeSlice(state)
     if (force || !previous || previous.view !== state.view || previous.targetSide !== state.targetSide) this.goTo(state.view, state.targetSide, !previous)
     this.buildLabels()
   }

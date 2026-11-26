@@ -150,3 +150,13 @@ test('the patient assessment grades unseen patients against the hidden truth', a
   await page.getByRole('link', { name: 'Course map' }).click()
   await expect(page.locator('.assess-status')).toContainText('Passed · 2 of 3 patients')
 })
+
+test('an MRI template slice loads through the target', async ({ page }) => {
+  await page.goto('./#/lab')
+  const volume = page.waitForResponse((r) => r.url().endsWith('anatomy/mri.bin') && r.ok())
+  await page.getByLabel('MRI slice').selectOption('coronal')
+  expect((await (await volume).body()).length).toBe(121 * 101 * 91)
+  await page.getByRole('button', { name: 'Target', exact: true }).click()
+  await page.getByLabel('MRI slice').selectOption('sagittal')
+  await expect(page.getByLabel('MRI slice')).toHaveValue('sagittal')
+})

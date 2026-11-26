@@ -1,9 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { Brain, Crosshair, Eye, EyeOff, Maximize2, Minimize2, RotateCcw, Tag } from 'lucide-react'
+import { Brain, Crosshair, Eye, EyeOff, Layers, Maximize2, Minimize2, RotateCcw, Tag } from 'lucide-react'
 import { useLab, useTick } from '../app/lab'
 import { FS, LANE, TARGET_OF, laneContact, type Side } from '../sim/model'
 import { rowNamed } from '../dsp/store'
-import { BrainScene, type CortexMode, type Label, type ViewPreset } from '../three/BrainScene'
+import { BrainScene, type CortexMode, type Label, type SliceMode, type ViewPreset } from '../three/BrainScene'
 import { LeadSchematic } from './LeadSchematic'
 
 const VIEWS: { id: ViewPreset; label: string }[] = [
@@ -38,6 +38,7 @@ export function BrainPanel() {
   const [cortex, setCortex] = useState<CortexMode>('glass')
   const [head, setHead] = useState(true)
   const [showLabels, setShowLabels] = useState(true)
+  const [slice, setSlice] = useState<SliceMode>('off')
   const [expanded, setExpanded] = useState(false)
   const webgl = useWebGL()
   const live = useRef(l)
@@ -97,6 +98,7 @@ export function BrainPanel() {
       view,
       targetSide: side,
       labels: showLabels,
+      slice,
     })
   })
 
@@ -182,6 +184,16 @@ export function BrainPanel() {
                     Head
                   </button>
                 )}
+                <label className="chip-btn chip-select" title="An MRI template slice through the target">
+                  <Layers size={12} /> MRI
+                  <select aria-label="MRI slice" value={slice} onChange={(e) => setSlice(e.target.value as SliceMode)}>
+                    {(['off', 'axial', 'coronal', 'sagittal'] as SliceMode[]).map((m) => (
+                      <option key={m} value={m}>
+                        {m === 'off' ? 'Off' : m[0].toUpperCase() + m.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <button className="chip-btn" aria-pressed={showLabels} onClick={() => setShowLabels(!showLabels)}>
                   <Tag size={12} /> Labels
                 </button>

@@ -2175,3 +2175,28 @@ select:disabled {
     display: none;
   }
 }
+.chip-select {
+  position: relative;
+  padding-right: 6px;
+}
+.chip-select select {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  padding: 0 14px 0 2px;
+  cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, #9fb0d6 50%), linear-gradient(135deg, #9fb0d6 50%, transparent 50%);
+  background-position: right 5px center, right 1px center;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+}
+.chip-select select option {
+  color: #0f1830;
+}
+/* The viewport grows to match a taller neighbouring card (the traces with their spectrogram). */
+.brain-card .viewport {
+  flex: 1 0 auto;
+}
