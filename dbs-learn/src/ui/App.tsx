@@ -379,6 +379,9 @@ function Workspace() {
           <a href={import.meta.env.BASE_URL + 'anatomy/ATTRIBUTION.txt'} target="_blank" rel="noreferrer">
             Anatomy credits
           </a>
+          <a href={import.meta.env.BASE_URL + 'recordings/ATTRIBUTION.txt'} target="_blank" rel="noreferrer">
+            Recording credits
+          </a>
           <a href={import.meta.env.BASE_URL + 'THIRD-PARTY.txt'} target="_blank" rel="noreferrer">
             Software licences
           </a>
