@@ -27,8 +27,18 @@ export const contactZ = (contact: number) => contact * PITCH_MM
  * Witness lanes: the heart, delivered stimulation (mA), true burst state, the true beta envelope,
  * and the adaptive controller's own beta estimate (µV).
  */
-export const LANE = { neural: 8, ecg: 16, stimL: 17, stimR: 18, burstL: 19, burstR: 20, betaL: 21, betaR: 22, senseL: 23, senseR: 24, accel: 25 } as const
-export const STRIDE = 26
+export const LANE = { neural: 8, ecg: 16, stimL: 17, stimR: 18, burstL: 19, burstR: 20, betaL: 21, betaR: 22, senseL: 23, senseR: 24, accel: 25, segments: 26 } as const
+export const STRIDE = 38
+/** Directional leads split contact levels 1 and 2 into segments a, b and c, 120° apart (a faces anterior). */
+export const SEGMENTS = ['a', 'b', 'c'] as const
+export const SEGMENT_ANGLE = [0, 120, 240]
+export const segLane = (side: Side, level: 1 | 2, segment: number) => LANE.segments + (side === 'L' ? 0 : 6) + (level - 1) * 3 + segment
+/** The contact, and segment for a directional lane, that a recorded lane belongs to. */
+export function laneContact(lane: number): { contact: number; segment?: number } {
+  if (lane < LANE.segments) return { contact: lane % 4 }
+  const k = (lane - LANE.segments) % 6
+  return { contact: 1 + Math.floor(k / 3), segment: k % 3 }
+}
 
 export type Movement = 'rest' | 'left' | 'right'
 /** Parkinson's disease (STN), dystonia (GPi) or essential tremor (VIM thalamus). */
@@ -70,6 +80,7 @@ export interface Config {
   /** Peak-dose dyskinesia; only expressed while levodopa is ON. */
   dyskinesia: boolean
   disorder: Disorder
+  lead: 'ring' | 'directional'
 }
 export type ConfigPatch = Partial<Omit<Config, 'stim' | 'adaptive'>> & {
   stim?: Partial<Omit<StimSettings, 'contact'>> & { contact?: Partial<Record<Side, number>> }
@@ -83,6 +94,7 @@ export const INITIAL: Config = {
   ecg: true,
   dyskinesia: false,
   disorder: 'pd',
+  lead: 'ring',
 }
 export function applyPatch(config: Config, patch: ConfigPatch): Config {
   return {
@@ -120,6 +132,8 @@ export interface Subject {
   thetaHz: Record<Side, number>
   /** Essential tremor frequency (Hz). */
   tremorHz: number
+  /** Direction (degrees from anterior, towards lateral) in which the beta generator lies from the lead. */
+  betaAngle: Record<Side, number>
 }
 
 export function randomGenerator(seed: number) {
@@ -147,6 +161,7 @@ export function makeSubject(seed: number): Subject {
     gammaHz: { L: Math.round((66 + 16 * extra()) * 10) / 10, R: Math.round((66 + 16 * extra()) * 10) / 10 },
     thetaHz: { L: Math.round((5 + 4 * extra()) * 10) / 10, R: Math.round((5 + 4 * extra()) * 10) / 10 },
     tremorHz: Math.round((4.5 + 2.5 * extra()) * 10) / 10,
+    betaAngle: { L: Math.round(360 * extra()), R: Math.round(360 * extra()) },
   }
 }
 
@@ -176,6 +191,9 @@ export class Generator {
   private dysk = 0
   private posture = [0, 0]
   private gammaPhase = [0.3, 2.1]
+  /** Segments have their own noise stream so ring channels keep their exact samples. */
+  private segRandom: () => number
+  private segNoise = new Float64Array(12)
   private moveF = [1, 1]
   private rebound = [0, 0]
   private stimF = [0, 0]
@@ -193,6 +211,7 @@ export class Generator {
     this.noise = randomGenerator(seed)
     this.bursts = randomGenerator(seed ^ 0xb0b)
     this.heart = randomGenerator(seed ^ 0xec9)
+    this.segRandom = randomGenerator(seed ^ 0x5e9)
     this.med = this.config.medication === 'on' ? 1 : 0
     this.states.push({ sample: 0, config: this.config })
   }
@@ -325,6 +344,20 @@ export class Generator {
           }
           out[o + i] = acquired[c] = neural + cardiac + artifact
           out[o + LANE.neural + i] = neural
+          if (c === 1 || c === 2) {
+            // Each segment sees the generator more strongly the more it faces it; the three average to the ring.
+            let sum = 0
+            for (let g = 0; g < 3; g++) {
+              const n = si * 6 + (c - 1) * 3 + g
+              this.segNoise[n] = 0.6 * this.segNoise[n] + 0.5 * (this.segRandom() - 0.5)
+              const facing = 1 + 0.75 * Math.cos(((SEGMENT_ANGLE[g] - sub.betaAngle[side]) * Math.PI) / 180)
+              const v = betaWeight(contactZ(c), border) * (beta * facing + gamma) + far + slow + fast + this.segNoise[n] + cardiac + artifact
+              out[o + segLane(side, c as 1 | 2, g)] = v
+              sum += v
+            }
+            // A directional lead's ring reading is the mean of its segments.
+            if (cfg.lead === 'directional') out[o + i] = acquired[c] = sum / 3
+          }
         }
         // The controller senses the pair flanking the stimulating contact; without one it must use a pair that contains it.
         const [a, b] = k >= 1 && k <= 2 ? [k - 1, k + 1] : k === 0 ? [0, 1] : [2, 3]

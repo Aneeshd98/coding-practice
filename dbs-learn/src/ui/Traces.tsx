@@ -199,7 +199,9 @@ export function Traces() {
           <span className="sr-only">Montage</span>
           <select aria-label="Montage" value={l.montage} onChange={(e) => l.setMontage(e.target.value as Montage)}>
             {MONTAGES.map((m) => (
-              <option key={m}>{m}</option>
+              <option key={m} disabled={m === 'Segments' && l.config.lead !== 'directional'}>
+                {m === 'Segments' && l.config.lead !== 'directional' ? 'Segments (directional lead only)' : m}
+              </option>
             ))}
           </select>
         </label>

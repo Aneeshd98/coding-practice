@@ -1,4 +1,4 @@
-export type Tool = 'lead' | 'sensing' | 'spectrum' | 'bursts' | 'movement' | 'stim' | 'adaptive' | 'review' | 'chronic' | 'tremor'
+export type Tool = 'lead' | 'sensing' | 'spectrum' | 'bursts' | 'movement' | 'stim' | 'adaptive' | 'review' | 'chronic' | 'tremor' | 'directional'
 export type ModuleId = 'sensing' | 'beta' | 'bursts' | 'stim' | 'programming' | 'adaptive' | 'beyond'
 
 export interface Reading {
@@ -55,6 +55,7 @@ const read = {
   dystonia: pubmed('Pallidal activity in dystonia: oscillatory local field potentials'),
   dystoniaTheta: pubmed('Theta-alpha oscillations characterize emotional and motor dysfunction in dystonia'),
   tremor: pubmed('Essential tremor: local field potentials in the thalamus'),
+  tinkhauser: pubmed('Directional local field potentials: A tool to optimize deep brain stimulation'),
 }
 
 export const modules: CourseModule[] = [
@@ -131,6 +132,35 @@ export const modules: CourseModule[] = [
           'Contacts 0 and 1 share the generator and 2 and 3 share its absence. The difference is largest across the edge between 1 and 2.',
         hint: 'A bipolar pair is large where its two contacts see different things.',
         sources: [read.brown, read.kuhn2006],
+        practical: true,
+      },
+      {
+        id: 'directional-sensing',
+        title: 'Directional leads',
+        intro: 'Segmented contacts split a ring into three directions, so you can ask where around the lead the beta comes from.',
+        explain: [
+          'A ring contact wraps all the way round the lead, so it averages every direction. Directional leads split the middle two levels into three segments, here a, b and c, 120° apart. A segment that faces the beta generator sees more of it than one facing away.',
+          'Comparing segments takes care. Against the implant case, every segment also picks up the heartbeat and distant activity, which can swamp a directional difference. Comparing each segment with the average of its own level removes what the three share, so the directional part stands out. In studies of directional recordings, the segment with the most beta often matched the direction that worked best for stimulation.',
+          'In this lab, segment a faces anterior, b posterolateral and c posteromedial. In a real patient, the lead’s rotation must first be confirmed on imaging before a segment’s direction can be trusted.',
+        ],
+        steps: [
+          'In the directional sensing panel, set Lead to Directional. Levels 1 and 2 now record from three segments each.',
+          'Keep medication OFF, stimulation off and the patient at rest, and wait 8 seconds.',
+          'Compare the grey bars (each segment against the case) with the wedges (each segment against its level’s average). Which segment points toward the beta?',
+          'Reveal the β region to compare the estimate with the true direction, in the panel and on the 3D lead. Then try a new patient.',
+        ],
+        tools: ['directional', 'lead'],
+        task: 'Against the case, the three segments of a level show almost the same beta power. Against their level’s average, one clearly stands out. Why?',
+        options: [
+          'The heartbeat and far-field activity reach all three segments equally. They swamp the difference against the case but cancel against the level average',
+          'Segments facing away from the generator record nothing at all',
+          'Referencing to the case filters out the beta band',
+        ],
+        correct: 0,
+        feedback:
+          'Shared signals add the same power to every segment, so the ratios between segments shrink. Subtracting the level’s average removes what is shared and leaves what differs by direction.',
+        hint: 'Think about what the three segments of one level have in common, and what removes it.',
+        sources: [read.tinkhauser, read.percept],
       },
     ],
   },

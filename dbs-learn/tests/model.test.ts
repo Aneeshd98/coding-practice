@@ -271,3 +271,22 @@ test('dystonia has a levodopa-insensitive pallidal theta peak; tremor activity f
   }
   assert.ok(accel(low({ disorder: 'tremor', movement: 'right', stim: { on: true } }).store) < 0.7 * accel(posture.store), 'stimulation reduces hand tremor')
 })
+
+test('segments facing the beta generator carry the most directional beta', async () => {
+  const { segmentBeta } = await import('../src/dsp/directional')
+  for (const seed of [7, 11, 23]) {
+    const { g, store } = record({ lead: 'directional' }, 20, seed)
+    for (const side of ['L', 'R'] as const) {
+      const r = segmentBeta(store, side, store.end - 20 * FS, store.end)
+      const truth = g.subject.betaAngle[side]
+      const diff = Math.abs(((r.angle - truth + 540) % 360) - 180)
+      assert.ok(diff < 40, `seed ${seed} ${side}: estimated ${r.angle.toFixed(0)}°, true ${truth}°`)
+    }
+  }
+  // A ring reading on a directional lead is the mean of its three segments.
+  const { store } = record({ lead: 'directional' }, 2)
+  const s = store.end - 1
+  const mean = (segLaneFn: (g: number) => number) => (store.at(s, segLaneFn(0)) + store.at(s, segLaneFn(1)) + store.at(s, segLaneFn(2))) / 3
+  const { segLane } = await import('../src/sim/model')
+  assert.ok(Math.abs(store.at(s, 1) - mean((g) => segLane('L', 1, g))) < 1e-4)
+})

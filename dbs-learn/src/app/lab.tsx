@@ -57,6 +57,14 @@ function useController() {
     return () => w.terminate()
   }, [signals, seed])
 
+  // Segment channels exist only on a directional lead (a new patient starts with ring contacts).
+  useEffect(() => {
+    if (config.lead !== 'directional' && montage === 'Segments') {
+      setMontageState('Sandwich pairs')
+      setFocus((f) => rowsFor('Sandwich pairs').find((r) => r.side === f[0])?.name ?? 'L 0–2')
+    }
+  }, [config.lead, montage])
+
   useEffect(() => {
     if (!notice) return
     const t = setTimeout(() => setNotice(''), 3200)

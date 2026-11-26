@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Brain, Crosshair, Eye, EyeOff, Maximize2, Minimize2, RotateCcw, Tag } from 'lucide-react'
 import { useLab, useTick } from '../app/lab'
-import { FS, LANE, TARGET_OF, type Side } from '../sim/model'
+import { FS, LANE, TARGET_OF, laneContact, type Side } from '../sim/model'
 import { rowNamed } from '../dsp/store'
 import { BrainScene, type CortexMode, type Label, type ViewPreset } from '../three/BrainScene'
 import { LeadSchematic } from './LeadSchematic'
@@ -86,7 +86,9 @@ export function BrainPanel() {
     scene.current?.update({
       border: l.subject?.border ?? null,
       revealed: l.revealed,
-      sensing: focus ? { side: focus.side, contacts: [focus.a % 4, ...(focus.b < 0 ? [] : [focus.b % 4])] } : null,
+      sensing: focus ? { side: focus.side, parts: [laneContact(focus.a), ...(focus.b < 0 ? [] : [laneContact(focus.b)])] } : null,
+      lead: l.config.lead,
+      betaAngle: l.subject?.betaAngle ?? null,
       stimContact: delivered.stim.on ? delivered.stim.contact : null,
       pulseWidth: delivered.stim.pulseWidth ?? 60,
       target: TARGET_OF[l.config.disorder],

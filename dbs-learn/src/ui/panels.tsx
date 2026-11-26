@@ -1,10 +1,11 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { Activity, AudioWaveform, CalendarClock, Stethoscope, Camera, Gauge, X, Hand, HeartPulse, Minus, Plus, SlidersVertical, Pill, RefreshCw, Sparkles, Timer, UserRound, Waves, Zap } from 'lucide-react'
+import { Activity, AudioWaveform, CalendarClock, Compass, Stethoscope, Camera, Gauge, X, Hand, HeartPulse, Minus, Plus, SlidersVertical, Pill, RefreshCw, Sparkles, Timer, UserRound, Waves, Zap } from 'lucide-react'
 import { useLab, useTick } from '../app/lab'
-import { DISORDERS, FS, LANE, SIDES, type Disorder, type Movement } from '../sim/model'
+import { DISORDERS, FS, LANE, SEGMENTS, SEGMENT_ANGLE, SIDES, TARGET_OF, type Disorder, type Movement, type Side } from '../sim/model'
 import { rowNamed } from '../dsp/store'
 import { BETA, bandPower, peak, prominent, welch } from '../dsp/spectrum'
 import { analyzeBursts } from '../dsp/bursts'
+import { DIRECTIONAL_SECONDS, SEGMENT_FACING, segmentBeta, type DirectionalBeta } from '../dsp/directional'
 import { POST_S, PRE_S, movementCourse } from '../dsp/movement'
 import { TEST_MAX, response } from '../sim/field'
 import { SLEEP, chronicDay, summarise } from '../sim/chronic'
@@ -41,7 +42,9 @@ export function PatientBar() {
         </span>
         <span>
           <b>Virtual patient #{l.seed}</b>
-          <small>Bilateral STN · 4-contact leads</small>
+          <small>
+            Bilateral {{ stn: 'STN', gpi: 'GPi', vim: 'VIM' }[TARGET_OF[l.config.disorder]]} · {l.config.lead === 'directional' ? 'directional' : '4-ring'} leads
+          </small>
         </span>
       </div>
       <label className="control">
@@ -888,6 +891,143 @@ export function TremorPanel() {
           </div>
         </div>
         <p className="note">The accelerometer is on the right hand, whose tremor is driven by the left thalamus. Hold the right arm out to bring the tremor on.</p>
+      </div>
+    </div>
+  )
+}
+
+/** Screen position for a direction around the lead, seen from above with anterior up and lateral outward. */
+const polar = (side: Side, deg: number, r: number, c = 110): [number, number] => {
+  const t = (deg * Math.PI) / 180
+  return [c + (side === 'R' ? 1 : -1) * r * Math.sin(t), c - r * Math.cos(t)]
+}
+
+function DirectionPlot({ side, result, truth }: { side: Side; result: DirectionalBeta; truth: number | null }) {
+  const R = 74,
+    base = 0.52 * R
+  const max = Math.max(1e-9, ...result.relative.map(Math.abs))
+  const at = (deg: number, r: number) => polar(side, deg, r).map((v) => v.toFixed(1)).join(' ')
+  const name = side === 'L' ? 'Left' : 'Right'
+  return (
+    <svg className="polar" viewBox="0 0 220 220" role="img" aria-label={`${name} lead, directional beta by segment; strongest ${SEGMENTS[result.strongest]} (${SEGMENT_FACING[result.strongest]})`}>
+      <circle cx={110} cy={110} r={R} className="polar-ring" />
+      <circle cx={110} cy={110} r={base} className="polar-base" />
+      <line x1={110} x2={110} y1={110 - R - 4} y2={110 + R + 4} className="polar-axis" />
+      <line x1={110 - R - 4} x2={110 + R + 4} y1={110} y2={110} className="polar-axis" />
+      <text x={110} y={14} textAnchor="middle" className="polar-label">
+        Anterior
+      </text>
+      <text x={110} y={214} textAnchor="middle" className="polar-label">
+        Posterior
+      </text>
+      <text x={side === 'R' ? 216 : 4} y={113} textAnchor={side === 'R' ? 'end' : 'start'} className="polar-label">
+        Lat
+      </text>
+      <text x={side === 'R' ? 4 : 216} y={113} textAnchor={side === 'R' ? 'start' : 'end'} className="polar-label">
+        Med
+      </text>
+      {SEGMENT_ANGLE.map((deg, g) => {
+        const r = Math.max(0.12 * R, base + 0.46 * R * (result.relative[g] / max))
+        const sweep = side === 'R' ? 1 : 0
+        const strongest = g === result.strongest
+        const [lx, ly] = polar(side, deg, R + 11)
+        return (
+          <g key={g}>
+            <path
+              d={`M110 110 L${at(deg - 50, r)} A${r.toFixed(1)} ${r.toFixed(1)} 0 0 ${sweep} ${at(deg + 50, r)} Z`}
+              className={'polar-wedge' + (strongest ? ' strongest' : '')}
+            />
+            <text x={lx} y={ly + 4} textAnchor="middle" className={'polar-seg' + (strongest ? ' strongest' : '')}>
+              {SEGMENTS[g]}
+            </text>
+          </g>
+        )
+      })}
+      {truth !== null && (
+        <line x1={110} y1={110} x2={polar(side, truth, R + 2)[0]} y2={polar(side, truth, R + 2)[1]} className="polar-truth" />
+      )}
+      <line x1={110} y1={110} x2={polar(side, result.angle, R - 6)[0]} y2={polar(side, result.angle, R - 6)[1]} className="polar-estimate" />
+      <circle cx={polar(side, result.angle, R - 6)[0]} cy={polar(side, result.angle, R - 6)[1]} r={3.5} className="polar-tip" />
+    </svg>
+  )
+}
+
+export function DirectionalPanel() {
+  const l = useLab()
+  useTick(l.signals, 1000)
+  const directional = l.config.lead === 'directional'
+  const end = l.viewEnd(),
+    from = end - DIRECTIONAL_SECONDS * FS
+  const ready = directional && l.signals.spans(from, end, (c) => c.lead === 'directional')
+  const recorded = directional ? Math.min(DIRECTIONAL_SECONDS, l.signals.settledFor(end, (c) => c.lead) / FS) : 0
+  const stimOn = l.signals.configAt(end - 1).stim.on
+  const results = ready ? SIDES.map((side) => segmentBeta(l.signals, side, from, end)) : null
+  const setLead = (lead: 'ring' | 'directional') => {
+    if (lead === 'ring' && l.montage === 'Segments') l.setMontage('Sandwich pairs')
+    l.change({ lead }, lead === 'ring' ? 'Ring lead' : 'Directional lead')
+  }
+  return (
+    <div className="tool">
+      <ToolHead icon={<Compass size={15} />} tone="beta" title="Directional sensing">
+        <div className="seg" role="group" aria-label="Lead type">
+          {(
+            [
+              ['ring', 'Ring'],
+              ['directional', 'Directional'],
+            ] as const
+          ).map(([v, label]) => (
+            <button key={v} aria-pressed={l.config.lead === v} onClick={() => setLead(v)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </ToolHead>
+      <div className="tool-body">
+        {!directional && (
+          <p className="note">Ring contacts wrap all the way round the lead, so each one averages every direction. Choose Directional to split levels 1 and 2 into segments a, b and c.</p>
+        )}
+        {directional && !results && <p className="note">Recording the segments… {recorded.toFixed(0)} of {DIRECTIONAL_SECONDS} s.</p>}
+        {results && (
+          <>
+            <div className="polar-pair">
+              {SIDES.map((side, i) => {
+                const r = results[i]
+                const spread = Math.max(...r.vsCase) / Math.max(1e-9, Math.min(...r.vsCase))
+                const top = Math.max(1e-9, ...r.vsCase)
+                return (
+                  <figure key={side} className="polar-card">
+                    <figcaption>
+                      <b>{side === 'L' ? 'Left' : 'Right'} lead</b>
+                      <span>
+                        Strongest {side} 1{SEGMENTS[r.strongest]}/2{SEGMENTS[r.strongest]} · {SEGMENT_FACING[r.strongest]}
+                      </span>
+                    </figcaption>
+                    <DirectionPlot side={side} result={r} truth={l.revealed && l.subject ? l.subject.betaAngle[side] : null} />
+                    <div className="case-bars" aria-label={`${side} segments against the case`}>
+                      <small>
+                        Against the case: segments differ by {spread < 1.5 ? 'only ' : ''}×{spread.toFixed(2)}
+                      </small>
+                      {SEGMENTS.map((name, g) => (
+                        <div key={name} className="exam-row">
+                          <span>{name}</span>
+                          <div className="bar wide">
+                            <i style={{ width: (100 * r.vsCase[g]) / top + '%', background: 'var(--muted)' }} />
+                          </div>
+                          <b>{r.vsCase[g].toFixed(1)}</b>
+                        </div>
+                      ))}
+                    </div>
+                  </figure>
+                )
+              })}
+            </div>
+            <p className="note">
+              Wedges compare each segment with the average of its own level (dashed circle) over the last {DIRECTIONAL_SECONDS} s, so the heartbeat and far-field activity that all three share cancel. The line is the estimated beta direction
+              {l.revealed ? '; the dashed line is the true one.' : '. Reveal the β region to check it.'}
+              {stimOn ? ' Stimulation is on: its artifact can distort segment recordings, so read direction with stimulation off.' : ''}
+            </p>
+          </>
+        )}
       </div>
     </div>
   )

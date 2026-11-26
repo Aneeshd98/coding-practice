@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
-import { SIDES, type Side } from '../sim/model'
+import { SEGMENT_ANGLE, SIDES, type Side } from '../sim/model'
 import { NUCLEI, add as add3, leadGeometry, mirror, nucleus, type LeadGeometry, type Nucleus, type Target, type Vec3 } from './anatomy'
 import { PATHWAYS, radius, reached } from '../sim/field'
 
@@ -11,7 +11,11 @@ export type ViewPreset = 'overview' | 'coronal' | 'sagittal' | 'target'
 export interface SceneState {
   border: Record<Side, number> | null
   revealed: boolean
-  sensing: { side: Side; contacts: number[] } | null
+  /** Sensed contacts, and segments when a directional lane is selected. */
+  sensing: { side: Side; parts: { contact: number; segment?: number }[] } | null
+  lead: 'ring' | 'directional'
+  /** Direction each side's beta source lies in, degrees from anterior toward lateral. */
+  betaAngle: Record<Side, number> | null
   stimContact: Record<Side, number> | null
   pulseWidth: number
   target: Target
@@ -175,7 +179,9 @@ function ellipsoid(n: Nucleus, side: Side) {
 interface LeadParts {
   group: THREE.Group
   shaft: THREE.Mesh
-  contacts: THREE.Mesh<THREE.CylinderGeometry, THREE.MeshStandardMaterial>[]
+  /** One mesh per ring contact, three per segmented level. */
+  contacts: THREE.Mesh<THREE.CylinderGeometry, THREE.MeshStandardMaterial>[][]
+  arrow: THREE.Group
   vta: THREE.Mesh<THREE.SphereGeometry, THREE.ShaderMaterial>
   ring: THREE.Mesh
   geometry: LeadGeometry
@@ -366,7 +372,7 @@ export class BrainScene {
       }
   }
 
-  private buildLead(geometry: LeadGeometry): LeadParts {
+  private buildLead(geometry: LeadGeometry, segmented: boolean, betaAngle?: number): LeadParts {
     const group = new THREE.Group()
     const dir = new THREE.Vector3(...geometry.direction)
     const up = new THREE.Vector3(0, 1, 0)
@@ -386,15 +392,52 @@ export class BrainScene {
     const cap = new THREE.Mesh(new THREE.SphereGeometry(0.635, 24, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), shaft.material)
     orient(cap, geometry.tip)
     group.add(cap)
-    const contacts = geometry.contacts.map((c) => {
-      const m = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.66, 0.66, 1.5, 36, 1, true),
-        new THREE.MeshStandardMaterial({ color: '#c9ced8', metalness: 1, roughness: 0.22, emissive: '#000000' }),
-      )
-      orient(m, c)
-      group.add(m)
-      return m
+    // Directions around the lead: 0° anterior, increasing toward lateral (mirrored between sides).
+    const anterior = new THREE.Vector3(0, 1, 0).projectOnPlane(dir).normalize()
+    const lateral = new THREE.Vector3(geometry.side === 'R' ? 1 : -1, 0, 0).projectOnPlane(dir).projectOnPlane(anterior).normalize()
+    const around = (deg: number) => {
+      const r = (deg * Math.PI) / 180
+      return anterior.clone().multiplyScalar(Math.cos(r)).addScaledVector(lateral, Math.sin(r))
+    }
+    const metal = () => new THREE.MeshStandardMaterial({ color: '#c9ced8', metalness: 1, roughness: 0.22, emissive: '#000000', side: THREE.DoubleSide })
+    const contacts = geometry.contacts.map((c, i) => {
+      if (!(segmented && (i === 1 || i === 2))) {
+        const m = new THREE.Mesh(new THREE.CylinderGeometry(0.66, 0.66, 1.5, 36, 1, true), metal())
+        m.userData = { contact: i }
+        orient(m, c)
+        group.add(m)
+        return [m]
+      }
+      // Three segments of about 100° each; CylinderGeometry's theta 0 lies along local +z.
+      return SEGMENT_ANGLE.map((deg, g) => {
+        const m = new THREE.Mesh(new THREE.CylinderGeometry(0.665, 0.665, 1.5, 16, 1, true, -Math.PI * (50 / 180), Math.PI * (100 / 180)), metal())
+        m.userData = { contact: i, segment: g }
+        const z = around(deg),
+          x = new THREE.Vector3().crossVectors(dir, z)
+        m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, dir, z))
+        m.position.set(...c)
+        group.add(m)
+        return m
+      })
     })
+    // Where the directional beta comes from, drawn between the two segmented levels.
+    const arrow = new THREE.Group()
+    const arrowMaterial = new THREE.MeshBasicMaterial({ color: BETA, transparent: true, opacity: 0.95, depthTest: false })
+    const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 2.6, 10), arrowMaterial)
+    stem.position.set(0, 1.3, 0)
+    const head = new THREE.Mesh(new THREE.ConeGeometry(0.42, 1, 16), arrowMaterial)
+    head.position.set(0, 3.1, 0)
+    arrow.add(stem, head)
+    arrow.renderOrder = 8
+    stem.renderOrder = head.renderOrder = 8
+    if (betaAngle !== undefined) {
+      const out = around(betaAngle)
+      arrow.quaternion.setFromUnitVectors(up, out)
+      arrow.position.copy(new THREE.Vector3(...geometry.contacts[1]).lerp(new THREE.Vector3(...geometry.contacts[2]), 0.5).addScaledVector(out, 0.9))
+      arrow.userData.tip = arrow.position.clone().addScaledVector(out, 3.8).toArray()
+    }
+    arrow.visible = false
+    group.add(arrow)
     const vta = new THREE.Mesh(
       new THREE.SphereGeometry(1, 40, 28),
       new THREE.ShaderMaterial({
@@ -418,7 +461,7 @@ export class BrainScene {
     ring.renderOrder = 6
     group.add(ring)
     this.root.add(group)
-    return { group, shaft, contacts, vta, ring, geometry }
+    return { group, shaft, contacts, arrow, vta, ring, geometry }
   }
 
   private world(v: Vec3) {
@@ -430,7 +473,15 @@ export class BrainScene {
     const previous = this.state
     this.state = state
     this.root.updateMatrixWorld()
-    if (state.border && (force || !previous?.border || previous.border.L !== state.border.L || previous.border.R !== state.border.R || previous.target !== state.target)) {
+    const leadChanged =
+      !previous?.border ||
+      previous.border.L !== state.border?.L ||
+      previous.border.R !== state.border?.R ||
+      previous.target !== state.target ||
+      previous.lead !== state.lead ||
+      previous.betaAngle?.L !== state.betaAngle?.L ||
+      previous.betaAngle?.R !== state.betaAngle?.R
+    if (state.border && (force || leadChanged)) {
       for (const side of SIDES) {
         const old = this.leads[side]
         if (old) {
@@ -439,7 +490,7 @@ export class BrainScene {
             if (o instanceof THREE.Mesh) o.geometry.dispose()
           })
         }
-        this.leads[side] = this.buildLead(leadGeometry(side, state.border[side], state.target))
+        this.leads[side] = this.buildLead(leadGeometry(side, state.border[side], state.target), state.lead === 'directional', state.betaAngle?.[side])
       }
     }
     const mode = state.view === 'target' ? 'hidden' : state.cortex
@@ -455,9 +506,14 @@ export class BrainScene {
       if (!lead) continue
       lead.group.visible = !target || side === state.targetSide
       lead.ring.visible = state.revealed
-      lead.contacts.forEach((m, c) => {
-        const sensing = state.sensing?.side === side && state.sensing.contacts.includes(c)
-        const stim = state.stimContact?.[side] === c
+      lead.arrow.visible = state.revealed && state.lead === 'directional'
+      lead.contacts.flat().forEach((m) => {
+        const { contact, segment } = m.userData as { contact: number; segment?: number }
+        // A ring selection lights every segment of its level; a segment selection lights only that segment.
+        const sensing =
+          state.sensing?.side === side &&
+          state.sensing.parts.some((p) => p.contact === contact && (p.segment === undefined || segment === undefined || p.segment === segment))
+        const stim = state.stimContact?.[side] === contact
         m.material.emissive.copy(stim ? STIM : sensing ? SENSE : new THREE.Color(0))
         m.material.emissiveIntensity = stim ? 0.9 : sensing ? 0.75 : 0
       })
@@ -517,6 +573,7 @@ export class BrainScene {
         if (lead) {
           lead.geometry.contacts.forEach((c, i) => add('c' + i, String(i), 'contact', c, side))
           if (s.revealed) add('edge', 'β edge', 'edge', lead.geometry.edge, side)
+          if (s.revealed && s.lead === 'directional' && lead.arrow.userData.tip) add('dir', 'β direction', 'edge', lead.arrow.userData.tip as Vec3, side)
         }
       } else {
         if (s.view !== 'sagittal') {

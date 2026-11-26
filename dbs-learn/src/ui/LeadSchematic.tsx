@@ -1,5 +1,5 @@
 import { useLab } from '../app/lab'
-import { CONTACTS, SIDES, contactZ, type Side } from '../sim/model'
+import { CONTACTS, SEGMENTS, SIDES, contactZ, laneContact, type Side } from '../sim/model'
 import { rowNamed } from '../dsp/store'
 
 const MM = 17,
@@ -11,7 +11,9 @@ function Lead({ side }: { side: Side }) {
   const l = useLab()
   const cfg = l.signals.configAt(l.viewEnd() - 1)
   const focus = rowNamed(l.focus)
-  const sensing = focus && focus.side === side ? [focus.a % 4, focus.b < 0 ? -1 : focus.b % 4] : []
+  const parts = focus && focus.side === side ? [laneContact(focus.a), ...(focus.b < 0 ? [] : [laneContact(focus.b)])] : []
+  const sensed = (c: number, g?: number) => parts.some((p) => p.contact === c && (p.segment === undefined || g === undefined || p.segment === g))
+  const segmented = l.config.lead === 'directional'
   const stim = cfg.stim.on ? cfg.stim.contact[side] : -1
   const border = l.subject?.border[side]
   return (
@@ -24,21 +26,25 @@ function Lead({ side }: { side: Side }) {
         <line x1={20} x2={140} y1={y(border)} y2={y(border)} stroke="#ff7fb0" strokeDasharray="4 3" />
       )}
       <rect x={74} y={y(12)} width={12} height={y(-1.2) - y(12)} rx={6} fill="#cfd8ea" opacity={0.85} />
-      {Array.from({ length: CONTACTS }, (_, c) => (
-        <g key={c}>
-          <rect
-            x={72}
-            y={y(contactZ(c) + 0.75)}
-            width={16}
-            height={1.5 * MM}
-            rx={2}
-            fill={c === stim ? '#ffb020' : sensing.includes(c) ? '#2ee6d6' : '#9aa6bd'}
-          />
-          <text x={96} y={y(contactZ(c)) + 4} fill="#dfe7fb" fontSize={11} fontFamily="JetBrains Mono, monospace">
-            {c}
-          </text>
-        </g>
-      ))}
+      {Array.from({ length: CONTACTS }, (_, c) => {
+        const fill = (g?: number) => (c === stim ? '#ffb020' : sensed(c, g) ? '#2ee6d6' : '#9aa6bd')
+        const split = segmented && (c === 1 || c === 2)
+        return (
+          <g key={c}>
+            {split ? (
+              // Seen from the side, a segmented level shows as separate pieces with gaps between them.
+              SEGMENTS.map((name, g) => (
+                <rect key={name} x={72 + g * 5.7} y={y(contactZ(c) + 0.75)} width={4.6} height={1.5 * MM} rx={1} fill={fill(g)} />
+              ))
+            ) : (
+              <rect x={72} y={y(contactZ(c) + 0.75)} width={16} height={1.5 * MM} rx={2} fill={fill()} />
+            )}
+            <text x={96} y={y(contactZ(c)) + 4} fill="#dfe7fb" fontSize={11} fontFamily="JetBrains Mono, monospace">
+              {split ? c + 'a–c' : c}
+            </text>
+          </g>
+        )
+      })}
     </svg>
   )
 }

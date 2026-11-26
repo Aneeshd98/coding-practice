@@ -30,7 +30,7 @@ test('a learner streams data, answers a checkpoint and completes the first lesso
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Why record between contacts')
   await page.reload()
   await page.getByRole('link', { name: 'Course map' }).click()
-  await expect(page.getByRole('img', { name: '1 of 18 lessons complete' })).toBeVisible()
+  await expect(page.getByRole('img', { name: '1 of 19 lessons complete' })).toBeVisible()
 })
 
 test('the sensing practical is graded from the live recording', async ({ page }) => {
@@ -90,4 +90,18 @@ test('a monopolar review records thresholds and shows side effects as the amplit
   await expect(exam).toContainText('Muscle contraction')
   await page.getByRole('button', { name: /Record side-effect threshold/ }).click()
   await expect(page.locator('.table tr.current td').nth(1)).toHaveText('3.0 mA')
+})
+
+test('a directional lead estimates the beta direction, and a new patient returns to ring contacts', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 860 })
+  await page.goto('./#/lesson/directional-sensing')
+  await page.getByRole('tab', { name: 'Experiment' }).click()
+  await page.getByRole('group', { name: 'Lead type' }).getByRole('button', { name: 'Directional' }).click()
+  await page.getByLabel('Montage').selectOption('Segments')
+  await expect(page.getByText(/Strongest L 1[abc]\/2[abc]/)).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole('img', { name: /Left lead, directional beta by segment/ })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0)
+  await page.getByRole('button', { name: 'New patient' }).click()
+  await expect(page.getByLabel('Montage')).toHaveValue('Sandwich pairs')
+  await expect(page.getByText(/Ring contacts wrap all the way round/)).toBeVisible()
 })
