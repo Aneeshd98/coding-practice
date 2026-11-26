@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { ArrowRight, AudioWaveform, Cable, ClipboardCheck, Gauge, Globe2, SlidersVertical, ChevronRight, CircleCheck, FlaskConical, GraduationCap, Layers3, PanelsTopLeft, Waves, Zap } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ArrowRight, AudioWaveform, Cable, ClipboardCheck, Download, Upload, Gauge, Globe2, SlidersVertical, ChevronRight, CircleCheck, FlaskConical, GraduationCap, Layers3, PanelsTopLeft, Waves, Zap } from 'lucide-react'
 import { LabProvider, load, store, useLab } from '../app/lab'
 import { lessons, modules, moduleOf, type ModuleId, type Tool } from '../course/content'
 import { LessonView, ModuleOutline, ToolView } from './Lesson'
@@ -7,6 +7,7 @@ import { BrainPanel } from './BrainPanel'
 import { PatientBar } from './panels'
 import { Assessment, loadAssessment } from './Assessment'
 import { CASES, passedAssessment } from '../course/assessment'
+import { applyProgress, exportProgress, validate } from '../app/progress'
 import { Traces } from './Traces'
 
 const route = () => window.location.hash.replace(/^#\/?/, '').split('/')
@@ -129,9 +130,68 @@ function CourseMap({ done, passed, resume }: { done: string[]; passed: string[];
           <a className="btn primary" href={'#/lesson/' + resume} style={{ width: '100%', justifyContent: 'center' }}>
             {done.length === lessons.length ? 'Revisit lessons' : 'Resume learning'} <ArrowRight size={15} />
           </a>
+          <ProgressTransfer />
         </aside>
       </div>
     </>
+  )
+}
+
+/** Move progress between browsers as a file: GitHub Pages has no server to keep it. */
+function ProgressTransfer() {
+  const input = useRef<HTMLInputElement>(null)
+  const [message, setMessage] = useState('')
+  const save = () => {
+    const file = exportProgress()
+    const url = URL.createObjectURL(new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' }))
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `subthalamic-lab-progress-${file.exported.slice(0, 10)}.json`
+    a.click()
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+  }
+  const open = async (f: File) => {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(await f.text())
+    } catch {
+      return setMessage('That file is not valid JSON.')
+    }
+    const r = validate(parsed)
+    if ('error' in r) return setMessage(r.error)
+    if (!window.confirm(`Replace this browser’s progress with the file’s (${r.progress.done.length} lessons complete)?`)) return
+    applyProgress(r.progress)
+    window.location.reload()
+  }
+  return (
+    <div className="transfer">
+      <div className="row">
+        <button className="btn" onClick={save}>
+          <Download size={15} /> Export progress
+        </button>
+        <button className="btn" onClick={() => input.current?.click()}>
+          <Upload size={15} /> Import
+        </button>
+        <input
+          ref={input}
+          type="file"
+          accept="application/json,.json"
+          hidden
+          aria-label="Progress file to import"
+          onChange={(e) => {
+            const f = e.target.files?.[0]
+            e.target.value = ''
+            if (f) void open(f)
+          }}
+        />
+      </div>
+      <small>Progress is saved in this browser only. Export it to continue on another device.</small>
+      {message && (
+        <p role="alert" className="status">
+          {message}
+        </p>
+      )}
+    </div>
   )
 }
 

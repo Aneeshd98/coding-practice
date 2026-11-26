@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { test as base, expect } from '@playwright/test'
 
 const test = base.extend<{ errors: void }>({
@@ -159,4 +160,28 @@ test('an MRI template slice loads through the target', async ({ page }) => {
   await page.getByRole('button', { name: 'Target', exact: true }).click()
   await page.getByLabel('MRI slice').selectOption('sagittal')
   await expect(page.getByLabel('MRI slice')).toHaveValue('sagittal')
+})
+
+test('progress exports to a file and imports into a fresh browser', async ({ page, browser }) => {
+  await page.goto('./#/lesson/lead-anatomy')
+  await page.getByRole('tab', { name: 'Checkpoint' }).click()
+  await page.getByRole('button', { name: /Contact 0/ }).click()
+  await page.getByRole('button', { name: 'Check answer' }).click()
+  await page.getByRole('button', { name: 'Complete lesson' }).click()
+  await page.goto('./#/map')
+  const download = page.waitForEvent('download')
+  await page.getByRole('button', { name: 'Export progress' }).click()
+  const path = await (await download).path()
+  const saved = JSON.parse(readFileSync(path, 'utf8'))
+  expect(saved.progress.done).toEqual(['lead-anatomy'])
+
+  const fresh = await browser.newPage()
+  await fresh.goto('./#/map')
+  await expect(fresh.getByRole('img', { name: '0 of 19 lessons complete' })).toBeVisible()
+  await fresh.getByLabel('Progress file to import').setInputFiles({ name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from('{"app":"other"}') })
+  await expect(fresh.getByRole('alert')).toHaveText('This file was not exported from Subthalamic Lab.')
+  fresh.once('dialog', (d) => d.accept())
+  await fresh.getByLabel('Progress file to import').setInputFiles(path)
+  await expect(fresh.getByRole('img', { name: '1 of 19 lessons complete' })).toBeVisible()
+  await fresh.close()
 })
