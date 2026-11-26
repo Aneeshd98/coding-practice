@@ -1,11 +1,12 @@
-import { useMemo, useState, type ReactNode } from 'react'
-import { Activity, AudioWaveform, CalendarClock, Compass, Stethoscope, Camera, Gauge, X, Hand, HeartPulse, Minus, Plus, SlidersVertical, Pill, RefreshCw, Sparkles, Timer, UserRound, Waves, Zap } from 'lucide-react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Activity, AudioWaveform, CalendarClock, Compass, Database, Stethoscope, Camera, Gauge, X, Hand, HeartPulse, Minus, Plus, SlidersVertical, Pill, RefreshCw, Sparkles, Timer, UserRound, Waves, Zap } from 'lucide-react'
 import { useLab, useTick } from '../app/lab'
 import { DISORDERS, FS, LANE, SEGMENTS, SEGMENT_ANGLE, SIDES, TARGET_OF, type Disorder, type Movement, type Side } from '../sim/model'
 import { rowNamed } from '../dsp/store'
 import { BETA, bandPower, peak, prominent, welch } from '../dsp/spectrum'
 import { analyzeBursts } from '../dsp/bursts'
 import { DIRECTIONAL_SECONDS, SEGMENT_FACING, segmentBeta, type DirectionalBeta } from '../dsp/directional'
+import { REAL_PAIRS, badContacts, compareConditions, loadRecording, pairSeries, type Recording } from '../dsp/recording'
 import { POST_S, PRE_S, movementCourse } from '../dsp/movement'
 import { TEST_MAX, response } from '../sim/field'
 import { SLEEP, chronicDay, summarise } from '../sim/chronic'
@@ -1029,6 +1030,138 @@ export function DirectionalPanel() {
               Wedges compare each segment with the average of its own level (dashed circle) over the last {DIRECTIONAL_SECONDS} s, so the heartbeat and far-field activity that all three share cancel. The line is the estimated beta direction
               {l.revealed ? '; the dashed line is the true one.' : l.exam ? '.' : '. Reveal the β region to check it.'}
               {stimOn ? ' Stimulation is on: its artifact can distort segment recordings, so read direction with stimulation off.' : ''}
+            </p>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export function RecordingPanel() {
+  const [rec, setRec] = useState<Recording | null>(null)
+  const [error, setError] = useState('')
+  const [side, setSide] = useState<Side>('L')
+  const [pair, setPair] = useState<[number, number]>([2, 3])
+  const [at, setAt] = useState(21)
+  useEffect(() => {
+    let live = true
+    loadRecording(import.meta.env.BASE_URL)
+      .then((r) => live && setRec(r))
+      .catch(() => live && setError('The recording could not be loaded.'))
+    return () => {
+      live = false
+    }
+  }, [])
+  const result = useMemo(() => (rec ? compareConditions(rec, side, pair) : null), [rec, side, pair])
+  const excerpt = useMemo(() => {
+    if (!rec) return null
+    const fs = rec.manifest.fs,
+      from = at * fs,
+      to = from + 3 * fs
+    const [off, on] = (['off', 'on'] as const).map((c) => pairSeries(rec, c, side, pair).subarray(from, to))
+    const peakAbs = Math.max(...off.map(Math.abs), ...on.map(Math.abs))
+    return { off, on, range: [-peakAbs, peakAbs] as [number, number] }
+  }, [rec, side, pair, at])
+  const name = `${side} ${pair[0]}–${pair[1]}`
+  return (
+    <div className="tool">
+      <ToolHead icon={<Database size={15} />} tone="sense" title="Real recording · OFF and ON levodopa">
+        <div className="seg" role="group" aria-label="Recording side">
+          {SIDES.map((s) => (
+            <button key={s} aria-pressed={side === s} onClick={() => setSide(s)}>
+              {s === 'L' ? 'Left' : 'Right'}
+            </button>
+          ))}
+        </div>
+      </ToolHead>
+      <div className="tool-body">
+        {error && <p className="note">{error}</p>}
+        {!rec && !error && <p className="note">Loading the recording…</p>}
+        {rec && result && excerpt && (
+          <>
+            <div className="seg" role="group" aria-label="Recording pair">
+              {REAL_PAIRS.map((p) => {
+                const bad = badContacts(rec.manifest, side, p)
+                return (
+                  <button
+                    key={p.join()}
+                    aria-pressed={pair[0] === p[0] && pair[1] === p[1]}
+                    disabled={bad.length > 0}
+                    title={bad.length ? `Contact ${side}${bad[0]} was marked bad in the ON recording` : undefined}
+                    onClick={() => setPair(p)}
+                  >
+                    {side} {p[0]}–{p[1]}
+                  </button>
+                )
+              })}
+            </div>
+            <Chart
+              series={[
+                { name: 'OFF levodopa', y: result.off.spectrum.psd.slice(1, 124), color: color.primary },
+                { name: 'ON levodopa', y: result.on.spectrum.psd.slice(1, 124), color: color.sense, dashed: true },
+              ]}
+              x0={result.off.spectrum.freqs[1]}
+              x1={result.off.spectrum.freqs[123]}
+              log
+              bands={[{ from: BETA[0], to: BETA[1], color: 'color-mix(in srgb, var(--beta) 10%, transparent)', label: 'β 13–35 Hz', labelColor: 'var(--beta)' }]}
+              markers={(['off', 'on'] as const)
+                .filter((c) => result[c].clear)
+                .map((c) => ({ x: result[c].peakHz, y: result[c].spectrum.psd[Math.round((result[c].peakHz * 512) / rec.manifest.fs)], label: `${c.toUpperCase()} ${result[c].peakHz.toFixed(1)} Hz`, color: c === 'off' ? color.primary : color.sense }))}
+              xLabel="Frequency (Hz)"
+              yLabel={`Power spectral density, ${name} (µV²/Hz), 60 s each`}
+              unit=""
+            />
+            <div className="metrics">
+              <div className="metric">
+                <small>Beta OFF</small>
+                <b>
+                  {result.off.power.toFixed(2)}
+                  <em>µV² · {result.off.clear ? `peak ${result.off.peakHz.toFixed(1)} Hz` : 'no clear peak'}</em>
+                </b>
+              </div>
+              <div className="metric">
+                <small>Beta ON</small>
+                <b>
+                  {result.on.power.toFixed(2)}
+                  <em>µV² · {result.on.clear ? `peak ${result.on.peakHz.toFixed(1)} Hz` : 'no clear peak'}</em>
+                </b>
+              </div>
+              <div className="metric beta">
+                <small>ON ÷ OFF</small>
+                <b>
+                  {result.ratio.toFixed(2)}
+                  <em>×</em>
+                </b>
+              </div>
+            </div>
+            <label className="select" style={{ marginTop: 14 }}>
+              Excerpt
+              <select aria-label="Excerpt start" value={at} onChange={(e) => setAt(+e.target.value)}>
+                {Array.from({ length: 19 }, (_, i) => i * 3).map((s) => (
+                  <option key={s} value={s}>
+                    {s}–{s + 3} s
+                  </option>
+                ))}
+              </select>
+            </label>
+            {(['off', 'on'] as const).map((c) => (
+              <Chart
+                key={c}
+                series={[{ name: c === 'off' ? 'OFF levodopa' : 'ON levodopa', y: excerpt[c], color: c === 'off' ? color.primary : color.sense, width: 1.2 }]}
+                x0={at}
+                x1={at + 3}
+                yRange={excerpt.range}
+                zero
+                height={130}
+                xLabel="Seconds into the minute"
+                yLabel={`${name}, ${c.toUpperCase()} (µV)`}
+                unit=" s"
+              />
+            ))}
+            <p className="note">
+              Real data: participant {rec.manifest.subject}, OpenNeuro ds004998 (Rassoulou et al., Scientific Data 2024), released under CC0. One minute of rest per condition, 0.5–100 Hz, resampled to {rec.manifest.fs} Hz. {rec.manifest.selection.reason} Of {rec.manifest.selection.screened} participants
+              screened with the same peak test, {rec.manifest.selection.clear_off_peak} had a clear OFF beta peak, and beta fell ON in {rec.manifest.selection.fell_on_of_those} of those; the rest showed no clear peak.
             </p>
           </>
         )}

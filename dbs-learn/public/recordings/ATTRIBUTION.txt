@@ -1,0 +1,16 @@
+Subthalamic Lab · real recording credits
+
+ds004998-sub-2IhVOz-medoff.bin, ds004998-sub-2IhVOz-medon.bin, ds004998-sub-2IhVOz.json
+
+One minute of resting subthalamic LFP from each condition (OFF and ON levodopa) of participant
+sub-2IhVOz in:
+
+  Rassoulou F, Steina A, Hartmann CJ, Vesper J, Butz M, Schnitzler A, Hirschmann J.
+  Exploring the electrophysiology of Parkinson's disease with magnetoencephalography and
+  deep brain recordings. Scientific Data 11, 889 (2024). https://doi.org/10.1038/s41597-024-03768-1
+  Dataset: OpenNeuro ds004998 v1.2.2, doi:10.18112/openneuro.ds004998.v1.2.2
+
+The dataset is released under CC0 1.0. Only the eight DBS contacts were kept; the excerpts
+were filtered and downsampled as described in ds004998-sub-2IhVOz.json and
+scripts/prepare_recording.py. The selection of this participant, and how many participants
+were screened, are recorded in the same manifest.

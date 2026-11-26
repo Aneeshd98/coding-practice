@@ -32,7 +32,7 @@ test('a learner streams data, answers a checkpoint and completes the first lesso
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Why record between contacts')
   await page.reload()
   await page.getByRole('link', { name: 'Course map' }).click()
-  await expect(page.getByRole('img', { name: '1 of 19 lessons complete' })).toBeVisible()
+  await expect(page.getByRole('img', { name: '1 of 20 lessons complete' })).toBeVisible()
 })
 
 test('the sensing practical is graded from the live recording', async ({ page }) => {
@@ -177,11 +177,25 @@ test('progress exports to a file and imports into a fresh browser', async ({ pag
 
   const fresh = await browser.newPage()
   await fresh.goto('./#/map')
-  await expect(fresh.getByRole('img', { name: '0 of 19 lessons complete' })).toBeVisible()
+  await expect(fresh.getByRole('img', { name: '0 of 20 lessons complete' })).toBeVisible()
   await fresh.getByLabel('Progress file to import').setInputFiles({ name: 'bad.json', mimeType: 'application/json', buffer: Buffer.from('{"app":"other"}') })
   await expect(fresh.getByRole('alert')).toHaveText('This file was not exported from Subthalamic Lab.')
   fresh.once('dialog', (d) => d.accept())
   await fresh.getByLabel('Progress file to import').setInputFiles(path)
-  await expect(fresh.getByRole('img', { name: '1 of 19 lessons complete' })).toBeVisible()
+  await expect(fresh.getByRole('img', { name: '1 of 20 lessons complete' })).toBeVisible()
   await fresh.close()
+})
+
+test('the real recording compares OFF and ON and excludes the bad contact', async ({ page }) => {
+  await page.goto('./#/lesson/real-levodopa')
+  await page.getByRole('tab', { name: 'Experiment' }).click()
+  await page.getByRole('button', { name: /Lower$/ }).click()
+  const pairs = page.getByRole('group', { name: 'Recording pair' })
+  await expect(pairs.getByRole('button', { name: 'L 2–3' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(pairs.getByRole('button', { name: 'L 0–1' })).toBeDisabled()
+  await expect(page.locator('.metric.beta b').filter({ hasText: '×' })).toContainText(/0\.6\d/)
+  await page.getByRole('group', { name: 'Recording side' }).getByRole('button', { name: 'Right' }).click()
+  await expect(pairs.getByRole('button', { name: 'R 0–1' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Show what happened' }).click()
+  await expect(page.getByText('Your prediction held')).toBeVisible()
 })

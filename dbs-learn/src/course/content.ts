@@ -1,4 +1,4 @@
-export type Tool = 'lead' | 'sensing' | 'spectrum' | 'bursts' | 'movement' | 'stim' | 'adaptive' | 'review' | 'chronic' | 'tremor' | 'directional'
+export type Tool = 'lead' | 'sensing' | 'spectrum' | 'bursts' | 'movement' | 'stim' | 'adaptive' | 'review' | 'chronic' | 'tremor' | 'directional' | 'recording'
 export type ModuleId = 'sensing' | 'beta' | 'bursts' | 'stim' | 'programming' | 'adaptive' | 'beyond'
 
 export interface Reading {
@@ -59,6 +59,7 @@ const read = {
   dystonia: pubmed('Pallidal activity in dystonia: oscillatory local field potentials'),
   dystoniaTheta: pubmed('Theta-alpha oscillations characterize emotional and motor dysfunction in dystonia'),
   tremor: pubmed('Essential tremor: local field potentials in the thalamus'),
+  rassoulou: pubmed("Exploring the electrophysiology of Parkinson's disease with magnetoencephalography and deep brain recordings"),
   tinkhauser: pubmed('Directional local field potentials: A tool to optimize deep brain stimulation'),
 }
 
@@ -269,6 +270,49 @@ export const modules: CourseModule[] = [
         hint: 'What would a window that includes the transition contain?',
         sources: [read.kuhn2006, read.brown],
         practical: true,
+      },
+      {
+        id: 'real-levodopa',
+        title: 'A real patient, OFF and ON',
+        intro: 'The same comparison in real data: one minute of rest from each STN, before and after levodopa.',
+        explain: [
+          'This recording comes from an openly shared dataset of people with Parkinson’s disease whose DBS leads were externalised after surgery and recorded at rest OFF and then ON levodopa (Rassoulou et al., 2024; OpenNeuro ds004998, CC0). The contacts were recorded against the amplifier’s reference; the panel forms bipolar pairs, as in the simulator.',
+          'Real data are less tidy than the simulator. In this patient a clear beta peak, and its fall ON levodopa, appear on some contact pairs and not others. One contact was marked bad during the ON recording, so pairs that use it cannot be compared.',
+          'Many patients show no clear beta peak in a minute of rest. In the participants screened for this lesson, fewer than half did; this patient was chosen because both sides do. The panel’s note gives the numbers and the selection criterion.',
+        ],
+        steps: [
+          'Open the real recording panel. With L 2–3 selected, compare the OFF and ON spectra and the beta power ratio.',
+          'Try L 1–2 and L 1–3, then the right side. Where does a clear peak appear, and does beta fall ON on those pairs?',
+          'Notice that pairs using left contact 0 are disabled. Hover over one to see why.',
+          'Step through the excerpts: can you see beta in the raw trace, or only in the spectrum?',
+        ],
+        tools: ['recording'],
+        predict: {
+          question: 'On the pair with this patient’s clearest OFF beta peak, what will beta power be ON levodopa?',
+          options: [
+            'Higher',
+            'Lower',
+            'About the same',
+          ],
+          answer: 1,
+          reveal: 'Lower: on L 2–3 beta power falls to about 0.6 times its OFF value, and similarly on R 0–1. Pairs without a clear OFF peak change little.',
+        },
+        task: 'Fewer than half of the patients screened for this lesson showed a clear beta peak in a minute of rest. What is the best conclusion?',
+        options: [
+          'Those patients cannot have Parkinson’s disease',
+          'A missing peak in one short recording does not rule out pathological beta: it varies between patients, contacts and recording conditions',
+          'Beta oscillations are only found in simulations',
+        ],
+        correct: 1,
+        why: [
+          'Every participant in this dataset has Parkinson’s disease. Beta is a frequent finding, not a universal one, and one short recording can miss it.',
+          '',
+          'This patient’s real recording shows a clear beta peak that falls ON levodopa on two pairs, as many studies report.',
+        ],
+        feedback:
+          'Beta is a frequent but not universal marker. Studies look across many patients and contacts; one minute from a few contacts can miss it.',
+        hint: 'Think about what one minute from four contacts per side can and cannot show.',
+        sources: [read.rassoulou, read.kuhn2006],
       },
       {
         id: 'gamma-dyskinesia',
