@@ -8,6 +8,7 @@ import { BETA, bandPower, peak, prominent, welch, type Spectrum } from './spectr
 export type Condition = 'off' | 'on'
 export interface RecordingManifest {
   title: string
+  source: string
   citation: string
   doi: string
   licence: string
