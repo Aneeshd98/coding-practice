@@ -83,3 +83,15 @@ test('3D labels other than contact numbers do not overlap', async ({ page }) => 
     expect(overlaps, view).toEqual([])
   }
 })
+
+test('spectrogram event labels stay inside the plot on a phone', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 })
+  await page.goto('./#/lab')
+  await page.getByRole('switch', { name: 'Stimulation on' }).check()
+  const label = page.locator('.spectro-label', { hasText: 'Stimulation on' })
+  await expect(label).toBeVisible()
+  const [l, area] = await Promise.all([label.boundingBox(), page.locator('.spectro-area').boundingBox()])
+  expect(l!.x).toBeGreaterThanOrEqual(area!.x - 1)
+  expect(l!.x + l!.width).toBeLessThanOrEqual(area!.x + area!.width + 1)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0)
+})

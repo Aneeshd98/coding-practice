@@ -185,7 +185,8 @@ export function SpectrogramStrip() {
             if (at - lastLabel < 18) return null
             lastLabel = at
             return (
-              <span key={m.sample} className="spectro-label" style={{ left: at + '%' }} title={m.label}>
+              // A recent event sits near the right edge: its label goes to the left of the line so it stays in the plot.
+              <span key={m.sample} className={'spectro-label' + (at > 66 ? ' before' : '')} style={at > 66 ? { right: 100 - at + '%' } : { left: at + '%' }} title={m.label}>
                 {m.label}
               </span>
             )

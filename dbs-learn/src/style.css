@@ -2123,6 +2123,9 @@ select:disabled {
   color: var(--ink-2);
   pointer-events: none;
 }
+.spectro-label.before {
+  transform: translateX(-4px);
+}
 .spectro-tip {
   position: absolute;
   transform: translate(-50%, calc(-100% - 10px));
