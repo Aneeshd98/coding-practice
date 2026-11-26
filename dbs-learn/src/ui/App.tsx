@@ -1,54 +1,134 @@
 import { useEffect, useState } from 'react'
+import { ArrowRight, AudioWaveform, Cable, ChevronRight, CircleCheck, FlaskConical, GraduationCap, Layers3, PanelsTopLeft, Waves, Zap } from 'lucide-react'
 import { LabProvider, load, store, useLab } from '../app/lab'
 import { lessons, modules, moduleOf, type ModuleId, type Tool } from '../course/content'
-import { LessonView, ToolView } from './Lesson'
-import { LeadView } from './LeadView'
-import { SubjectBar } from './panels'
+import { LessonView, ModuleOutline, ToolView } from './Lesson'
+import { BrainPanel } from './BrainPanel'
+import { PatientBar } from './panels'
 import { Traces } from './Traces'
 
 const route = () => window.location.hash.replace(/^#\/?/, '').split('/')
+const moduleIcon: Record<ModuleId, typeof Zap> = { sensing: Cable, beta: AudioWaveform, bursts: Waves, stim: Zap }
+const pad = (n: number) => String(n).padStart(2, '0')
+
+export function Mark() {
+  return (
+    <span className="brand-mark" aria-hidden="true">
+      <svg width="20" height="20" viewBox="0 0 20 20">
+        <rect x="8.6" y="1" width="2.8" height="18" rx="1.4" fill="#dbe4ff" />
+        {[11.5, 14, 16.5].map((y) => (
+          <rect key={y} x="7.8" y={y - 0.9} width="4.4" height="1.8" rx="0.6" fill="#9fb2ff" />
+        ))}
+        <rect x="7.8" y="8.1" width="4.4" height="1.8" rx="0.6" fill="#ffb020" />
+        <circle cx="10" cy="9" r="5" fill="none" stroke="#ffb020" strokeOpacity="0.45" />
+      </svg>
+    </span>
+  )
+}
 
 function Instrument() {
   return (
     <>
-      <SubjectBar />
+      <PatientBar />
       <div className="instrument">
+        <BrainPanel />
         <Traces />
-        <LeadView />
       </div>
     </>
   )
 }
 
-function CourseMap({ done, passed }: { done: string[]; passed: string[] }) {
+function Ring({ value, total }: { value: number; total: number }) {
+  const r = 46,
+    c = 2 * Math.PI * r
   return (
-    <section className="map">
-      <h1>Course map</h1>
-      <p className="lede">
-        {done.length} of {lessons.length} lessons complete · {passed.length} of {modules.length} practicals passed
-      </p>
-      <div className="modules">
-        {modules.map((m, i) => (
-          <article key={m.id} className="panel module">
-            <div className="eyebrow">
-              Module {i + 1} {passed.includes(m.id) && '· practical passed'}
-            </div>
-            <h2>{m.title}</h2>
-            <p>{m.summary}</p>
-            <ol>
-              {m.lessons.map((l) => (
-                <li key={l.id}>
-                  <a href={'#/lesson/' + l.id}>
-                    {done.includes(l.id) ? '✓ ' : ''}
-                    {l.title}
-                  </a>
-                </li>
-              ))}
-            </ol>
-          </article>
-        ))}
+    <svg className="ring" width="120" height="120" viewBox="0 0 120 120" role="img" aria-label={`${value} of ${total} lessons complete`}>
+      <circle cx="60" cy="60" r={r} fill="none" stroke="var(--line-2)" strokeWidth="10" />
+      {value > 0 && (
+        <circle cx="60" cy="60" r={r} fill="none" stroke="var(--primary)" strokeWidth="10" strokeLinecap="round" strokeDasharray={`${(c * value) / total} ${c}`} transform="rotate(-90 60 60)" />
+      )}
+      <text x="60" y="58" textAnchor="middle" fontFamily="var(--display)" fontSize="26" fontWeight="600" fill="var(--ink)">
+        {value}
+      </text>
+      <text x="60" y="78" textAnchor="middle" fontFamily="var(--mono)" fontSize="11" fill="var(--muted)">
+        of {total} lessons
+      </text>
+    </svg>
+  )
+}
+
+function CourseMap({ done, passed, resume }: { done: string[]; passed: string[]; resume: string }) {
+  return (
+    <>
+      <div className="hero">
+        <div>
+          <div className="eyebrow">Learning path</div>
+          <h1>Course map</h1>
+          <p>Four modules take you from a single contact pair to stimulation artifacts. Each ends with a practical graded from your own recording.</p>
+        </div>
       </div>
-    </section>
+      <div className="map-grid">
+        <div className="modules">
+          {modules.map((m, i) => {
+            const Icon = moduleIcon[m.id]
+            const n = m.lessons.filter((l) => done.includes(l.id)).length
+            return (
+              <article key={m.id} className="card module-card">
+                <div className="module-top">
+                  <span className="icon-tile">
+                    <Icon size={20} />
+                  </span>
+                  <div>
+                    <small>
+                      Module {pad(i + 1)} · {n}/{m.lessons.length} {passed.includes(m.id) && '· practical passed'}
+                    </small>
+                    <h2>{m.title}</h2>
+                  </div>
+                </div>
+                <p>{m.summary}</p>
+                <div className="bar">
+                  <i style={{ width: (100 * n) / m.lessons.length + '%' }} />
+                </div>
+                <ol>
+                  {m.lessons.map((l, j) => (
+                    <li key={l.id}>
+                      <a href={'#/lesson/' + l.id}>
+                        <span className={'node' + (done.includes(l.id) ? ' done' : '')}>{done.includes(l.id) ? <CircleCheck size={13} /> : j + 1}</span>
+                        {l.title}
+                        <ChevronRight size={15} color="var(--muted)" />
+                      </a>
+                    </li>
+                  ))}
+                </ol>
+              </article>
+            )
+          })}
+        </div>
+        <aside className="card record">
+          <h2>Your learning record</h2>
+          <Ring value={done.length} total={lessons.length} />
+          <div className="metrics">
+            <div className="metric">
+              <small>Practicals</small>
+              <b>
+                {passed.length}
+                <em>/ {modules.length}</em>
+              </b>
+            </div>
+            <div className="metric">
+              <small>Modules</small>
+              <b>
+                {modules.filter((m) => m.lessons.every((l) => done.includes(l.id))).length}
+                <em>/ {modules.length}</em>
+              </b>
+            </div>
+          </div>
+          <a className="btn primary" href={'#/lesson/' + resume} style={{ width: '100%', justifyContent: 'center' }}>
+            {done.length === lessons.length ? 'Revisit lessons' : 'Resume learning'} <ArrowRight size={15} />
+          </a>
+        </aside>
+      </div>
+    </>
   )
 }
 
@@ -68,7 +148,8 @@ function Workspace() {
     return () => window.removeEventListener('hashchange', on)
   }, [])
   const page = path[0] || 'lesson'
-  const lesson = lessons.find((x) => x.id === path[1]) ?? lessons.find((x) => !done.includes(x.id)) ?? lessons[0]
+  const resume = (lessons.find((x) => !done.includes(x.id)) ?? lessons[0]).id
+  const lesson = lessons.find((x) => x.id === path[1]) ?? lessons.find((x) => x.id === resume)!
   const module = moduleOf(lesson.id)
   useEffect(() => {
     // Pin the resolved lesson in the URL so completing it does not jump to the next one.
@@ -86,73 +167,120 @@ function Workspace() {
     set(next)
     store(key, next)
   }
+  const nav = [
+    { id: 'lesson', label: 'Learning studio', icon: PanelsTopLeft, href: '#/lesson/' + lesson.id },
+    { id: 'map', label: 'Course map', icon: Layers3, href: '#/map' },
+    { id: 'lab', label: 'Free lab', icon: FlaskConical, href: '#/lab' },
+  ]
   return (
     <>
-      <header className="top">
-        <a className="brand" href="#/lesson">
-          Subthalamic <b>Lab</b>
-        </a>
-        <nav>
-          <a href={'#/lesson/' + lesson.id} aria-current={page === 'lesson' ? 'page' : undefined}>
-            Lessons
+      <header className="topbar">
+        <div className="topbar-inner">
+          <a className="brand" href={'#/lesson/' + resume}>
+            <Mark />
+            <span className="word">
+              Subthalamic <b>Lab</b>
+            </span>
           </a>
-          <a href="#/map" aria-current={page === 'map' ? 'page' : undefined}>
-            Course map
-          </a>
-          <a href="#/lab" aria-current={page === 'lab' ? 'page' : undefined}>
-            Free lab
-          </a>
-        </nav>
+          <nav className="nav" aria-label="Main">
+            {nav.map((n) => (
+              <a key={n.id} href={n.href} aria-current={page === n.id ? 'page' : undefined}>
+                <n.icon size={16} />
+                <span>{n.label}</span>
+              </a>
+            ))}
+          </nav>
+          <div className="topbar-right">
+            <div className="progress-mini">
+              <GraduationCap size={16} />
+              <b>
+                {done.length}/{lessons.length}
+              </b>
+              lessons
+            </div>
+          </div>
+        </div>
       </header>
       <main>
         {page === 'map' ? (
-          <CourseMap done={done} passed={passed} />
+          <CourseMap done={done} passed={passed} resume={resume} />
         ) : page === 'lab' ? (
           <>
             <div className="hero">
-              <h1>Free lab</h1>
-              <p>Every instrument at once. Explore the virtual patient at your own pace.</p>
+              <div>
+                <div className="eyebrow">Independent practice</div>
+                <h1>Free lab</h1>
+                <p>Every instrument at once. Change medication, movement and stimulation, and watch the STN and its recording respond.</p>
+              </div>
             </div>
             <Instrument />
             <div className="tools-grid">
               {allTools.map((t) => (
-                <section key={t} className="panel">
-                  <ToolView tool={t} wide />
-                </section>
+                <ToolView key={t} tool={t} highRange={t === 'spectrum'} />
               ))}
             </div>
           </>
         ) : (
           <>
+            <nav className="crumbs" aria-label="Breadcrumb">
+              <span>DBS sensing</span>
+              <ChevronRight size={13} />
+              <span>{module.title}</span>
+              <ChevronRight size={13} />
+              <strong>Lesson {pad(module.lessons.indexOf(lesson) + 1)}</strong>
+            </nav>
             <div className="hero">
-              <div className="eyebrow">
-                Module {modules.indexOf(module) + 1} · {module.title} · Lesson {module.lessons.indexOf(lesson) + 1} of{' '}
-                {module.lessons.length}
+              <div>
+                <div className="eyebrow">
+                  Module {pad(modules.indexOf(module) + 1)} · {module.title} · Lesson {pad(module.lessons.indexOf(lesson) + 1)}
+                </div>
+                <h1>{lesson.title}</h1>
+                <p>{lesson.intro}</p>
               </div>
-              <h1>{lesson.title}</h1>
-              <p>{lesson.intro}</p>
+              <div className="hero-side">
+                <div className="bar-label">
+                  Course progress
+                  <b>
+                    {done.length} / {lessons.length}
+                  </b>
+                </div>
+                <div className="bar">
+                  <i style={{ width: (100 * done.length) / lessons.length + '%' }} />
+                </div>
+              </div>
             </div>
             <Instrument />
-            <LessonView
-              key={lesson.id}
-              lesson={lesson}
-              done={done.includes(lesson.id)}
-              passed={passed.includes(module.id)}
-              onComplete={() => {
-                add(done, setDone, 'done', lesson.id)
-                l.tell('Lesson complete')
-              }}
-              onPass={() => add(passed, setPassed, 'passed', module.id as ModuleId)}
-            />
+            <div className="learning">
+              <LessonView
+                key={lesson.id}
+                lesson={lesson}
+                done={done.includes(lesson.id)}
+                passed={passed.includes(module.id)}
+                onComplete={() => {
+                  add(done, setDone, 'done', lesson.id)
+                  l.tell('Lesson complete')
+                }}
+                onPass={() => add(passed, setPassed, 'passed', module.id)}
+              />
+              <ModuleOutline lesson={lesson} done={done} />
+            </div>
           </>
         )}
       </main>
-      <footer>
-        A teaching simulation of subthalamic local field potentials. It is not a model of any specific device and must not be used
-        for clinical decisions or to choose stimulation settings.
+      <footer className="site-foot">
+        <span>A teaching simulation of subthalamic local field potentials. Not a model of any device; not for clinical decisions or programming.</span>
+        <span style={{ display: 'flex', gap: 16 }}>
+          <a href={import.meta.env.BASE_URL + 'anatomy/ATTRIBUTION.txt'} target="_blank" rel="noreferrer">
+            Anatomy credits
+          </a>
+          <a href={import.meta.env.BASE_URL + 'THIRD-PARTY.txt'} target="_blank" rel="noreferrer">
+            Software licences
+          </a>
+        </span>
       </footer>
       {l.notice && (
         <div className="toast" role="status">
+          <CircleCheck size={16} />
           {l.notice}
         </div>
       )}

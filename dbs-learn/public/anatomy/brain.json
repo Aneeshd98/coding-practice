@@ -1,0 +1,35 @@
+{
+ "format": "int16 xyz in 1/64 mm, then uint32 triangle indices",
+ "parts": [
+  {
+   "name": "cerebrum_left",
+   "vertices": 18008,
+   "triangles": 22952,
+   "offset": 0
+  },
+  {
+   "name": "cerebrum_right",
+   "vertices": 17994,
+   "triangles": 22952,
+   "offset": 383472
+  },
+  {
+   "name": "cerebellum",
+   "vertices": 5917,
+   "triangles": 10622,
+   "offset": 766860
+  },
+  {
+   "name": "brainstem",
+   "vertices": 2729,
+   "triangles": 3539,
+   "offset": 929826
+  },
+  {
+   "name": "scalp",
+   "vertices": 8112,
+   "triangles": 16164,
+   "offset": 988668
+  }
+ ]
+}

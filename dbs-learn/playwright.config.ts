@@ -9,7 +9,11 @@ export default defineConfig({
   use: {
     baseURL: url,
     viewport: { width: 1280, height: 900 },
-    launchOptions: { executablePath: process.env.CHROME_PATH },
+    launchOptions: {
+      executablePath: process.env.CHROME_PATH,
+      // Software WebGL so the 3D brain renders on machines without a GPU.
+      args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
+    },
   },
   webServer: {
     command: 'npm run preview -- --port 4193 --strictPort',

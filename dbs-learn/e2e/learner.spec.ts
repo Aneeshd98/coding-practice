@@ -16,7 +16,7 @@ const test = base.extend<{ errors: void }>({
 test('a learner streams data, answers a checkpoint and completes the first lesson', async ({ page }) => {
   await page.goto('./')
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Where the lead sits')
-  const clock = page.locator('.strip time')
+  const clock = page.locator('.trace-foot .clock')
   const first = await clock.innerText()
   await expect(clock).not.toHaveText(first)
   await page.getByRole('tab', { name: 'Checkpoint' }).click()
@@ -30,7 +30,7 @@ test('a learner streams data, answers a checkpoint and completes the first lesso
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Why record between contacts')
   await page.reload()
   await page.getByRole('link', { name: 'Course map' }).click()
-  await expect(page.getByText('1 of 10 lessons complete')).toBeVisible()
+  await expect(page.getByRole('img', { name: '1 of 10 lessons complete' })).toBeVisible()
 })
 
 test('the sensing practical is graded from the live recording', async ({ page }) => {
@@ -44,15 +44,28 @@ test('the sensing practical is graded from the live recording', async ({ page })
   for (const pair of ['0–1', '1–2', '2–3']) {
     await page.getByRole('combobox', { name: /Which left adjacent pair/ }).selectOption(pair)
     await page.getByRole('button', { name: 'Verify practical' }).click()
-    if (await page.getByText('Module practical passed.').isVisible()) break
+    if (await page.getByText('Module practical passed', { exact: true }).isVisible()) break
   }
-  await expect(page.getByText('Module practical passed.')).toBeVisible()
+  await expect(page.getByText('Module practical passed', { exact: true })).toBeVisible()
+})
+
+test('the 3D brain loads its anatomy, and the target view shows the four contacts', async ({ page }) => {
+  await page.goto('./#/lesson/lead-anatomy')
+  const model = page.locator('.brain-card')
+  await expect(model.locator('canvas')).toBeVisible()
+  await expect(model.getByText('Loading anatomy…')).toHaveCount(0, { timeout: 20_000 })
+  await expect(model.locator('[data-label="stnL"]')).toHaveText('Left STN')
+  await model.getByRole('button', { name: 'Target', exact: true }).click()
+  for (const c of ['0', '1', '2', '3']) await expect(model.locator(`[data-label="c${c}"]`)).toHaveText(c)
+  await model.getByRole('button', { name: /Reveal β region/ }).click()
+  await expect(model.locator('[data-label="edge"]')).toHaveText('β edge')
 })
 
 test('stimulation and burst tools render, and the narrow layout does not scroll sideways', async ({ page }) => {
   await page.goto('./#/lab')
-  await page.getByRole('checkbox', { name: /Stimulation on/ }).check()
-  await expect(page.locator('.lead .contact.stim')).toHaveCount(2)
+  await page.getByRole('switch', { name: 'Stimulation on' }).check()
+  await expect(page.locator('.patient .status-chip.stim')).toContainText('2.0 mA')
+  await expect(page.locator('.brain-card .card-foot')).toContainText('L1 · R1 · 2.0 mA')
   await expect(page.getByRole('heading', { name: /Beta bursts/ })).toBeVisible()
   await page.setViewportSize({ width: 375, height: 800 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)

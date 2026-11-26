@@ -1,0 +1,11 @@
+Subthalamic Lab · bundled software and fonts
+
+React and React DOM · MIT License · Copyright (c) Meta Platforms, Inc. and affiliates.
+three.js · MIT License · Copyright © 2010-2025 three.js authors.
+Lucide icons (lucide-react) · ISC License · Copyright (c) Lucide Contributors 2022; portions Copyright (c) Cole Bemis 2013-2022 (Feather, MIT).
+Inter · SIL Open Font License 1.1 · Copyright 2016 The Inter Project Authors.
+Space Grotesk · SIL Open Font License 1.1 · Copyright 2020 The Space Grotesk Project Authors.
+JetBrains Mono · SIL Open Font License 1.1 · Copyright 2020 The JetBrains Mono Project Authors.
+
+Full licence texts are included in each package's distribution and at:
+https://opensource.org/license/mit · https://opensource.org/license/isc-license-txt · https://openfontlicense.org

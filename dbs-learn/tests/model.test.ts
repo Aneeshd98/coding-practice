@@ -197,3 +197,16 @@ test('a monotonic band reports no peak instead of extrapolating outside it', () 
   assert.equal(p.local, false)
   assert.ok(p.hz >= 13 && p.hz <= 35)
 })
+
+test('a noise wiggle is not a beta peak, a real one is, and a clipped artifact can fake one', async () => {
+  const { prominent } = await import('../src/dsp/spectrum')
+  const noisy = welch(series(record({ stim: { on: true, contact: { L: 1 }, amplitude: 2 } }).store, 'L 0–1'))
+  const real = welch(series(record({}).store, 'L 0–2'))
+  assert.equal(prominent(noisy, peak(noisy, 13, 35), 13, 35), false)
+  assert.equal(prominent(real, peak(real, 13, 35), 13, 35), true)
+  // At 4 mA the pair containing the stimulating contact saturates. Clipping creates harmonics,
+  // and the 4th (520 Hz) folds to 520 − 2 × 250 = 20 Hz, inside the beta band.
+  const clipped = welch(series(record({ stim: { on: true, contact: { L: 1 }, amplitude: 4 } }).store, 'L 0–1'))
+  const fake = peak(clipped, 13, 35)
+  assert.ok(prominent(clipped, fake, 13, 35) && Math.abs(fake.hz - 20) < 0.6, String(fake.hz))
+})

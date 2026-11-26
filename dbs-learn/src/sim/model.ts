@@ -23,8 +23,9 @@ export const ch = (side: Side, contact: number) => (side === 'L' ? 0 : 4) + cont
 /** Height of a contact centre above contact 0, the deepest contact. */
 export const contactZ = (contact: number) => contact * PITCH_MM
 
-export const LANE = { neural: 8, ecg: 16, stimL: 17, stimR: 18, burstL: 19, burstR: 20 } as const
-export const STRIDE = 21
+/** Witness lanes: the heart, delivered stimulation (mA), true burst state, and the true beta envelope. */
+export const LANE = { neural: 8, ecg: 16, stimL: 17, stimR: 18, burstL: 19, burstR: 20, betaL: 21, betaR: 22 } as const
+export const STRIDE = 23
 
 export type Movement = 'rest' | 'left' | 'right'
 export interface StimSettings {
@@ -253,6 +254,7 @@ export class Generator {
         }
         out[o + (si ? LANE.burstR : LANE.burstL)] = inBurst
         out[o + (si ? LANE.stimR : LANE.stimL)] = this.ramp[si] * amp
+        out[o + (si ? LANE.betaR : LANE.betaL)] = level * envelope
       }
     }
     return out
