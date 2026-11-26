@@ -191,8 +191,15 @@ export function LessonView({ lesson, done, passed, onComplete, onPass }: { lesso
             <div className={'feedback ' + (correct ? '' : 'retry')} role="status">
               {correct ? <CheckCircle2 size={20} /> : <CircleAlert size={20} />}
               <div>
-                <b>{correct ? 'Correct' : 'Take another look'}</b>
-                <p>{correct ? lesson.feedback : lesson.hint}</p>
+                <b>{correct ? 'Correct' : 'Not quite'}</b>
+                {correct ? (
+                  <p>{lesson.feedback}</p>
+                ) : (
+                  <>
+                    <p>{lesson.why[choice!]}</p>
+                    <p className="hint">Hint: {lesson.hint}</p>
+                  </>
+                )}
               </div>
             </div>
           )}

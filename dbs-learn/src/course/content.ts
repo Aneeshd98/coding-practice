@@ -15,6 +15,8 @@ export interface Lesson {
   task: string
   options: string[]
   correct: number
+  /** Why each wrong option is wrong, aligned with options; the correct one is ''. */
+  why: string[]
   feedback: string
   hint: string
   sources: Reading[]
@@ -81,6 +83,11 @@ export const modules: CourseModule[] = [
         task: 'Which contact sits deepest in the brain?',
         options: ['Contact 3', 'Contact 0', 'They are all at the same depth'],
         correct: 1,
+        why: [
+          'Contact 3 is the highest contact, nearest the top of the lead. Numbering starts at the tip.',
+          '',
+          'The contacts are spaced along the lead, 2 mm apart centre to centre, so each sits at a different depth.',
+        ],
         feedback: 'Contacts are numbered from the tip upward, so contact 0 is the deepest (most ventral) contact.',
         hint: 'The numbering starts at the tip of the lead.',
         sources: [read.brown, read.percept],
@@ -106,6 +113,11 @@ export const modules: CourseModule[] = [
           'Bipolar recordings filter out all frequencies below 100 Hz',
         ],
         correct: 0,
+        why: [
+          '',
+          'The heart keeps beating: the ECG witness shows it throughout. What changes is the subtraction, not the heart.',
+          'A bipolar pair keeps low frequencies, including beta at 13–35 Hz. Cardiac pickup disappears because both contacts share it, not because of a filter.',
+        ],
         feedback:
           'A common input cancels in a difference. Only the small difference between the two contacts’ cardiac pickup remains.',
         hint: 'Think about what a subtraction does to a signal that is the same on both inputs.',
@@ -128,6 +140,11 @@ export const modules: CourseModule[] = [
         task: 'Adjacent pair 1–2 shows a clear beta peak while 0–1 and 2–3 show almost none. Where is the edge of the beta generator most likely to be?',
         options: ['Below contact 0', 'Between contacts 1 and 2', 'Above contact 3'],
         correct: 1,
+        why: [
+          'If the edge were below contact 0, all four contacts would sit outside the generator together, and every pair would show little beta.',
+          '',
+          'If the edge were above contact 3, all four contacts would sit inside the generator. They would see similar beta, so every pair’s difference would be small.',
+        ],
         feedback:
           'Contacts 0 and 1 share the generator and 2 and 3 share its absence. The difference is largest across the edge between 1 and 2.',
         hint: 'A bipolar pair is large where its two contacts see different things.',
@@ -157,6 +174,11 @@ export const modules: CourseModule[] = [
           'Referencing to the case filters out the beta band',
         ],
         correct: 0,
+        why: [
+          '',
+          'Segments facing away still record beta, only less of it. If they recorded nothing, the against-the-case bars would differ a lot.',
+          'The case reference filters nothing: each segment against the case still contains its beta. The problem is what is added on top of it.',
+        ],
         feedback:
           'Shared signals add the same power to every segment, so the ratios between segments shrink. Subtracting the level’s average removes what is shared and leaves what differs by direction.',
         hint: 'Think about what the three segments of one level have in common, and what removes it.',
@@ -186,6 +208,11 @@ export const modules: CourseModule[] = [
         task: 'A spectrum rises smoothly toward low frequencies and has a narrow bump at 21 Hz. Which part is the beta oscillation?',
         options: ['The smooth rise toward low frequencies', 'The narrow bump at 21 Hz', 'The highest point on the plot'],
         correct: 1,
+        why: [
+          'The smooth rise is the aperiodic background found in every recording. An oscillation shows as a peak above that background.',
+          '',
+          'The highest point is usually at the lowest frequencies, where the background is largest. A peak above its surroundings marks an oscillation, not height alone.',
+        ],
         feedback: 'The bump above the aperiodic background is the oscillation. The low-frequency rise is the background itself.',
         hint: 'Separate the smooth background from what stands above it.',
         sources: [read.fooof, read.brown],
@@ -211,6 +238,11 @@ export const modules: CourseModule[] = [
           'Beta only exists 15 seconds after any change',
         ],
         correct: 0,
+        why: [
+          '',
+          'The recording runs continuously and needs no warm-up. The wait is about the patient’s state, not the equipment.',
+          'Beta is present OFF and ON. The wait lets the medication effect settle, so the window does not mix two states.',
+        ],
         feedback: 'A window that straddles the transition mixes OFF and ON activity and underestimates the change.',
         hint: 'What would a window that includes the transition contain?',
         sources: [read.kuhn2006, read.brown],
@@ -237,6 +269,11 @@ export const modules: CourseModule[] = [
           'A beta burst at a higher frequency',
         ],
         correct: 0,
+        why: [
+          '',
+          'At 250 Hz sampling the 130 Hz artifact folds to 250 − 130 = 120 Hz, not to 65 Hz.',
+          'Beta lies at 13–35 Hz. A narrow peak at exactly half the stimulation frequency points to entrainment.',
+        ],
         feedback: 'Dyskinesia-related gamma tends to lock to half the stimulation frequency. The 130 Hz artifact aliases to 120 Hz at 250 Hz sampling, not to 65 Hz.',
         hint: 'Compute 130 ÷ 2, and separately where 130 Hz aliases at 250 Hz sampling.',
         sources: [pubmed('Gamma oscillations in the hyperkinetic state detected with chronic human brain recordings in Parkinson’s disease'), read.kuhn2006],
@@ -258,6 +295,11 @@ export const modules: CourseModule[] = [
         task: 'On a 10-minute beta log, beta climbs steadily during the hour before each scheduled dose and falls within an hour of taking it. What does this pattern most likely show?',
         options: ['Wearing off between doses', 'Sleep', 'Stimulation artifact'],
         correct: 0,
+        why: [
+          '',
+          'Sleep lowers beta for hours overnight. It does not rise and fall with each daytime dose.',
+          'A stimulation artifact would not climb before each dose and fall after it. Timing tied to doses points to medication.',
+        ],
         feedback: 'Beta rising as the previous dose fades, and falling once the next takes effect, is the signature of wearing off.',
         hint: 'Relate the timing of the rise and fall to the dose times.',
         sources: [read.percept, read.neumann, read.kuhn2006],
@@ -290,6 +332,11 @@ export const modules: CourseModule[] = [
           'Burst durations become negative',
         ],
         correct: 0,
+        why: [
+          '',
+          'A percentile can be computed for any recording, ON or OFF. The issue is what it does to the comparison.',
+          'Durations run from one threshold crossing to the next and are always positive. The issue is that each recording gets its own yardstick.',
+        ],
         feedback:
           'A percentile threshold adapts to each recording. A fixed threshold from a baseline lets a weaker state show fewer and shorter bursts.',
         hint: 'What fraction of samples lies above a 75th percentile, by definition?',
@@ -312,6 +359,11 @@ export const modules: CourseModule[] = [
         task: 'The right hand moves. Where should beta suppression be strongest?',
         options: ['Right STN', 'Left STN', 'Equal on both sides'],
         correct: 1,
+        why: [
+          'The right STN mainly serves the left side of the body. Beta drops there too, but less.',
+          '',
+          'Beta falls on both sides with movement, but more on the side opposite the moving hand.',
+        ],
         feedback: 'Motor control is largely crossed, so the left STN, contralateral to the right hand, shows the larger drop.',
         hint: 'Each hemisphere mainly controls the opposite side of the body.',
         sources: [read.kuhn2004, read.burstsMed],
@@ -340,6 +392,11 @@ export const modules: CourseModule[] = [
         task: 'Stimulation runs at 130 Hz and the LFP is sampled at 250 Hz. Where does the artifact appear in the spectrum?',
         options: ['130 Hz', '120 Hz', '65 Hz'],
         correct: 1,
+        why: [
+          '130 Hz is above the Nyquist frequency (125 Hz at 250 Hz sampling), so it cannot appear there. It folds back to 250 − 130 = 120 Hz.',
+          '',
+          '65 Hz is half the stimulation frequency, where entrained gamma can appear with dyskinesia. The artifact itself folds to 120 Hz.',
+        ],
         feedback: '130 Hz lies above the 125 Hz Nyquist limit and folds back to 250 − 130 = 120 Hz.',
         hint: 'Reflect the frequency around the Nyquist limit, half the sampling rate.',
         sources: [read.percept, read.neumann],
@@ -361,6 +418,11 @@ export const modules: CourseModule[] = [
         task: 'Stimulation is on contact 2. Which pair gives sandwich sensing?',
         options: ['0–1', '1–3', '2–3'],
         correct: 1,
+        why: [
+          'Contacts 0 and 1 sit at different distances from contact 2, so they pick up different amounts of artifact and it does not cancel.',
+          '',
+          'The pair 2–3 contains the stimulating contact itself, so the full artifact enters the recording.',
+        ],
         feedback: 'Contacts 1 and 3 sit 2 mm either side of contact 2, so the artifact is nearly equal on both and cancels.',
         hint: 'Pick the two contacts equally spaced on either side of the stimulating contact.',
         sources: [read.percept, read.neumann],
@@ -386,6 +448,11 @@ export const modules: CourseModule[] = [
           'The pair containing the stimulating contact',
         ],
         correct: 1,
+        why: [
+          'A monopolar contact is compared with the case in the chest, so nothing cancels the large stimulation artifact.',
+          '',
+          'A pair containing the stimulating contact records the full artifact, which can saturate the amplifier.',
+        ],
         feedback: 'The flanking pair cancels most of the artifact, so beta remains measurable while stimulation runs.',
         hint: 'Which recording kept the artifact smallest in the previous lesson?',
         sources: [read.little, read.burstsAdbs, read.neumann],
@@ -414,6 +481,11 @@ export const modules: CourseModule[] = [
         task: 'Contact 2 gives benefit at 2.0 mA and muscle contraction at 2.4 mA. Contact 1 gives benefit at 1.6 mA and muscle contraction at 4.1 mA. Which is the better choice?',
         options: ['Contact 2, because its side effect needs more than 2 mA', 'Contact 1, because its window is 2.5 mA rather than 0.4 mA', 'Either, because both give benefit'],
         correct: 1,
+        why: [
+          'Its side effect starts only 0.4 mA above its benefit threshold. What matters is the gap between the two, the therapeutic window.',
+          '',
+          'Both help, but contact 2 leaves only 0.4 mA before side effects. A small change in amplitude or swelling around the lead could cross it.',
+        ],
         feedback: 'Contact 1 leaves 2.5 mA between benefit and side effect; contact 2 only 0.4 mA. The wider window is safer and easier to adjust.',
         hint: 'Subtract each benefit threshold from its side-effect threshold.',
         sources: [read.volkmann, read.vta],
@@ -435,6 +507,11 @@ export const modules: CourseModule[] = [
         task: 'Muscle contraction in the face appears at a low amplitude on an upper contact. Which structure has the field most likely reached?',
         options: ['The internal capsule', 'The red nucleus', 'The contralateral STN'],
         correct: 0,
+        why: [
+          '',
+          'Muscle contraction comes from activating motor fibres. They run in the internal capsule, lateral to the STN; the red nucleus lies medial and is not a motor fibre tract.',
+          'The other STN is in the opposite hemisphere, centimetres away. A field a few millimetres across cannot reach it.',
+        ],
         feedback: 'Motor fibres in the internal capsule run lateral to the STN; their activation causes muscle contraction.',
         hint: 'Which nearby pathway carries motor commands to the face and limbs?',
         sources: [read.shortPulse, read.volkmann, read.vta],
@@ -467,6 +544,11 @@ export const modules: CourseModule[] = [
           'It will stimulate only during movement',
         ],
         correct: 1,
+        why: [
+          'Stimulation rises whenever the estimate is above the threshold. If it is always above, the controller never turns down.',
+          '',
+          'The controller follows beta, not movement. With a threshold this low, beta is above it at rest and during movement alike.',
+        ],
         feedback: 'If sensed beta is always above threshold, the controller ramps up and stays at its maximum, which is continuous DBS with extra steps.',
         hint: 'Compare the estimate with the threshold at every moment. Which way does the amplitude ramp?',
         sources: [read.little, read.burstsAdbs, read.neumann],
@@ -492,6 +574,11 @@ export const modules: CourseModule[] = [
           'The stimulation frequency changes to 30 Hz',
         ],
         correct: 0,
+        why: [
+          '',
+          'A higher sensing frequency does not mean more stimulation. The controller responds to power in its band, and this band misses the beta peak.',
+          'The sensing band and the stimulation frequency are separate settings. Changing what is sensed does not change what is delivered.',
+        ],
         feedback: 'An off-peak band carries little of the patient’s beta, so the estimate stays low and rarely crosses the threshold.',
         hint: 'What does the band-pass filter pass through to the estimate when the beta peak lies outside it?',
         sources: [read.little, read.arlotti, read.neumann],
@@ -514,7 +601,7 @@ export const modules: CourseModule[] = [
         ],
         steps: [
           'This lesson switches the virtual patient to dystonia: the leads now sit in the GPi. Look at Target view.',
-          'Select L 0–2 and find the 3–12 Hz peak in the spectrum. Switch levodopa on via Free lab and confirm it has no effect here.',
+          'Select L 0–2 and find the 3–12 Hz peak in the spectrum. Compare it with the beta band, where there is little.',
           'Turn stimulation on at contact 1 and compare the low-frequency peak.',
         ],
         tools: ['spectrum', 'stim'],
@@ -525,6 +612,11 @@ export const modules: CourseModule[] = [
           'As proof that the patient has Parkinson’s disease',
         ],
         correct: 0,
+        why: [
+          '',
+          'Low-frequency pallidal activity is a widely reported finding in dystonia and is studied as a possible marker, so it should not be dismissed.',
+          'This is a GPi recording in a patient with dystonia. A 7 Hz peak with little beta is not the Parkinsonian pattern.',
+        ],
         feedback: 'Biomarkers depend on the disorder and the target. In dystonia, pallidal theta–alpha activity is the commonly reported candidate.',
         hint: 'Is beta the only oscillation that matters, whatever the disorder?',
         sources: [read.dystonia, read.dystoniaTheta],
@@ -547,6 +639,11 @@ export const modules: CourseModule[] = [
         task: 'The right arm is held out and an accelerometer shows 5.5 Hz tremor. Where is a matching 5.5 Hz LFP peak most expected?',
         options: ['Left VIM', 'Right VIM', 'Neither: tremor is purely peripheral'],
         correct: 0,
+        why: [
+          '',
+          'Each thalamus mainly serves the opposite side of the body, so right-arm tremor is expected in the left VIM.',
+          'Activity at the tremor frequency has been recorded in the thalamus of people with tremor, so it is not purely peripheral.',
+        ],
         feedback: 'Each thalamus mainly controls the opposite side of the body, so the left VIM carries the strongest right-hand tremor activity.',
         hint: 'Which hemisphere controls the right hand?',
         sources: [read.tremor, read.neumann],

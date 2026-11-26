@@ -1764,3 +1764,8 @@ details.reading ul {
 .case-bars .exam-row + .exam-row {
   margin-top: 3px;
 }
+.feedback p.hint {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--ink-2);
+}

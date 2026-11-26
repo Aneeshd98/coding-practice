@@ -131,3 +131,10 @@ test('the tremor practical measures the contralateral VIM peak during posture', 
   assert.equal(grade('beyond', ctx(), hz.toFixed(1)), undefined)
   assert.ok(grade('beyond', ctx(), (hz + 2).toFixed(1)))
 })
+
+test('every wrong option explains why it is wrong', () => {
+  for (const l of lessons) {
+    assert.equal(l.why.length, l.options.length, l.id)
+    l.why.forEach((w, i) => assert.equal(w === '', i === l.correct, `${l.id} option ${i}`))
+  }
+})
