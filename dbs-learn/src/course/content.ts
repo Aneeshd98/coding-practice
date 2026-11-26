@@ -22,6 +22,8 @@ export interface Lesson {
   sources: Reading[]
   /** The module practical sits on this lesson (default: the last). */
   practical?: boolean
+  /** A prediction the learner commits to before running the experiment, revealed afterwards. */
+  predict?: { question: string; options: string[]; answer: number; reveal: string }
   /** The condition this lesson's virtual patient has (default: Parkinson’s disease). */
   disorder?: 'pd' | 'dystonia' | 'tremor'
 }
@@ -106,6 +108,16 @@ export const modules: CourseModule[] = [
           'Turn ECG pickup off and on to confirm which deflections came from the heart.',
         ],
         tools: ['sensing', 'lead'],
+        predict: {
+          question: 'When you switch from Monopolar to Sandwich pairs, what will happen to the regular cardiac spikes?',
+          options: [
+            'They will mostly disappear',
+            'They will grow larger',
+            'They will stay the same size',
+          ],
+          answer: 0,
+          reveal: 'The spikes mostly vanish. The heart reaches both contacts of a pair almost equally, and a shared signal cancels in a subtraction.',
+        },
         task: 'The heartbeat is large in every monopolar contact but almost absent in L 0–2. Why?',
         options: [
           'The heart signal reaches both contacts nearly equally and cancels in the subtraction',
@@ -231,6 +243,16 @@ export const modules: CourseModule[] = [
           'Compare the two beta powers shown under the captures.',
         ],
         tools: ['spectrum'],
+        predict: {
+          question: 'What will levodopa do to resting STN beta power?',
+          options: [
+            'Raise it',
+            'Leave it unchanged',
+            'Lower it',
+          ],
+          answer: 2,
+          reveal: 'Beta power falls ON levodopa, and long, large beta bursts become shorter.',
+        },
         task: 'Why wait before capturing the ON window?',
         options: [
           'So the medication effect has settled and the window reflects one state',
@@ -262,6 +284,16 @@ export const modules: CourseModule[] = [
           'Turn stimulation on at contact 1, 130 Hz. Where does the gamma peak move?',
         ],
         tools: ['spectrum', 'stim'],
+        predict: {
+          question: 'When stimulation starts at 130 Hz, where will the narrow gamma peak go?',
+          options: [
+            'It will move to 130 Hz',
+            'It will lock to 65 Hz, half the stimulation frequency',
+            'It will stay at its own frequency',
+          ],
+          answer: 1,
+          reveal: 'The gamma peak locks to 65 Hz. Under stimulation, this narrowband gamma can entrain to half the stimulation frequency.',
+        },
         task: 'With dyskinesia and stimulation at 130 Hz, a narrow peak appears at exactly 65 Hz. What is the best interpretation?',
         options: [
           'Gamma entrained to half the stimulation frequency',
@@ -292,6 +324,16 @@ export const modules: CourseModule[] = [
           'Add doses until high-beta time is short, and watch for dyskinesia-related gamma at peak dose.',
         ],
         tools: ['chronic'],
+        predict: {
+          question: 'If you remove the 15:00 dose, what will happen to the hours of high beta?',
+          options: [
+            'They will increase in the afternoon',
+            'They will fall',
+            'Nothing will change',
+          ],
+          answer: 0,
+          reveal: 'Without the 15:00 dose, the earlier dose wears off and beta stays high through the afternoon, so under-treated hours increase.',
+        },
         task: 'On a 10-minute beta log, beta climbs steadily during the hour before each scheduled dose and falls within an hour of taking it. What does this pattern most likely show?',
         options: ['Wearing off between doses', 'Sleep', 'Stimulation artifact'],
         correct: 0,
@@ -325,6 +367,16 @@ export const modules: CourseModule[] = [
           'Switch to Threshold: fixed from OFF capture and compare again. Which comparison reflects the medication effect?',
         ],
         tools: ['bursts', 'spectrum'],
+        predict: {
+          question: 'With one fixed threshold, how will beta bursts ON levodopa compare with OFF?',
+          options: [
+            'Longer',
+            'The same',
+            'Shorter',
+          ],
+          answer: 2,
+          reveal: 'ON levodopa, bursts measured against the OFF threshold are shorter. A fixed threshold is what lets the difference show.',
+        },
         task: 'You set the threshold separately in each recording at its own 75th percentile. What is the problem?',
         options: [
           'Each recording is forced to spend a similar fraction of time above threshold, hiding real amplitude changes',
@@ -356,6 +408,16 @@ export const modules: CourseModule[] = [
           'Find the rebound after the stop cue at 2 s.',
         ],
         tools: ['movement'],
+        predict: {
+          question: 'During right-hand movement, what will left STN beta do?',
+          options: [
+            'Stay unchanged',
+            'Fall during the movement, then briefly overshoot after it stops',
+            'Rise during the movement',
+          ],
+          answer: 1,
+          reveal: 'Left STN beta falls during right-hand movement and rebounds above its resting level for about a second after the stop cue.',
+        },
         task: 'The right hand moves. Where should beta suppression be strongest?',
         options: ['Right STN', 'Left STN', 'Equal on both sides'],
         correct: 1,
@@ -389,6 +451,16 @@ export const modules: CourseModule[] = [
           'Select L 0–1, which includes the stimulating contact, and raise the amplitude to 4 mA. Look for CLIPPED on the trace and a sharp peak at 20 Hz in the spectrum. Then return to 2 mA.',
         ],
         tools: ['stim', 'spectrum'],
+        predict: {
+          question: 'Which pair will show the larger stimulation artifact with stimulation at contact 1?',
+          options: [
+            'L 0–1, which contains the stimulating contact',
+            'L 2–3, which does not',
+            'Both the same',
+          ],
+          answer: 0,
+          reveal: 'The pair containing the stimulating contact shows a far larger artifact. The artifact falls off with distance, so contacts 2 and 3 see smaller, more similar amounts, and more of it cancels.',
+        },
         task: 'Stimulation runs at 130 Hz and the LFP is sampled at 250 Hz. Where does the artifact appear in the spectrum?',
         options: ['130 Hz', '120 Hz', '65 Hz'],
         correct: 1,
@@ -441,6 +513,16 @@ export const modules: CourseModule[] = [
           'Try stimulating contact 3 at the same amplitude and compare the suppression.',
         ],
         tools: ['stim', 'spectrum', 'lead'],
+        predict: {
+          question: 'As you raise the amplitude at contact 1, what will happen to beta in L 0–2?',
+          options: [
+            'It will rise',
+            'It will not change',
+            'It will fall progressively',
+          ],
+          answer: 2,
+          reveal: 'Beta falls as the amplitude rises, and recovers over about a second when stimulation is reduced.',
+        },
         task: 'Adaptive DBS adjusts stimulation according to beta power measured during stimulation. Which recording makes that possible?',
         options: [
           'A monopolar contact next to the stimulating contact',
@@ -537,6 +619,16 @@ export const modules: CourseModule[] = [
           'Compare the mean amplitude and the beta power with continuous stimulation at the maximum amplitude.',
         ],
         tools: ['adaptive', 'spectrum'],
+        predict: {
+          question: 'Compared with continuous stimulation at the maximum amplitude, how much energy will adaptive DBS deliver?',
+          options: [
+            'The same',
+            'Less',
+            'More',
+          ],
+          answer: 1,
+          reveal: 'Adaptive DBS delivers less: it stimulates hard only while beta is high and turns down between bursts.',
+        },
         task: 'The threshold is set below the lowest value the beta estimate ever reaches. How will the adaptive system behave?',
         options: [
           'It will never stimulate',
@@ -636,6 +728,16 @@ export const modules: CourseModule[] = [
           'Compare the left and right VIM, then turn stimulation on and watch the tremor amplitude.',
         ],
         tools: ['tremor', 'spectrum', 'stim'],
+        predict: {
+          question: 'When stimulation turns on in the left VIM, what will happen to the right-hand tremor?',
+          options: [
+            'It will shrink',
+            'It will grow',
+            'It will not change',
+          ],
+          answer: 0,
+          reveal: 'The tremor shrinks within seconds of stimulation starting, one reason the VIM is a target for tremor.',
+        },
         task: 'The right arm is held out and an accelerometer shows 5.5 Hz tremor. Where is a matching 5.5 Hz LFP peak most expected?',
         options: ['Left VIM', 'Right VIM', 'Neither: tremor is purely peripheral'],
         correct: 0,

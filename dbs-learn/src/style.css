@@ -1769,3 +1769,57 @@ details.reading ul {
   font-size: 13px;
   color: var(--ink-2);
 }
+
+/* Predict-then-reveal */
+.predict {
+  border: 1px solid color-mix(in srgb, var(--stim) 35%, var(--line));
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 14px;
+  background: linear-gradient(180deg, var(--stim-soft), transparent 160%);
+}
+.predict .eyebrow {
+  color: var(--stim);
+  margin-bottom: 6px;
+}
+.predict-q {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.answers.compact {
+  margin: 12px 0 8px;
+  gap: 8px;
+}
+.answers.compact button {
+  padding: 9px 12px;
+  font-size: 14px;
+  grid-template-columns: 26px 1fr;
+}
+.answers.compact button span {
+  width: 26px;
+  height: 26px;
+}
+.predict-made {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.predict-made b {
+  color: var(--ink);
+  font-weight: 600;
+}
+.predict .feedback {
+  margin: 10px 0 0;
+}
+.btn.small {
+  height: 30px;
+  padding: 0 11px;
+  font-size: 13px;
+}

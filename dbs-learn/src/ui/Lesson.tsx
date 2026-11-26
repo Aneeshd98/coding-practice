@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { ArrowRight, BookOpen, Check, CheckCircle2, CircleAlert, ClipboardCheck, FlaskConical, GraduationCap, LayoutGrid, ListTree } from 'lucide-react'
-import { useLab } from '../app/lab'
+import { ArrowRight, BookOpen, Check, CheckCircle2, CircleAlert, ClipboardCheck, Eye, FlaskConical, GraduationCap, LayoutGrid, Lightbulb, ListTree } from 'lucide-react'
+import { load, store, useLab } from '../app/lab'
 import { lessons, moduleOf, modules, practicalLesson, type Lesson as LessonType, type Tool } from '../course/content'
 import { exercises, grade } from '../course/practicals'
 import { AdaptivePanel, BurstPanel, ChronicPanel, DirectionalPanel, ReviewPanel, TremorPanel, MovementPanel, SensingPanel, SpectrumPanel, StimPanel } from './panels'
@@ -91,10 +91,66 @@ function Practical({ lesson, passed, onPass }: { lesson: LessonType; passed: boo
   )
 }
 
+/** Commit to a prediction before the experiment, then compare it with what the recording showed. */
+function PredictCard({ lesson, onCommit, committed }: { lesson: LessonType; onCommit: () => void; committed: boolean }) {
+  const p = lesson.predict!
+  const [made, setMade] = useState<number | undefined>(() => load<Record<string, number>>('predictions', {})[lesson.id])
+  const [shown, setShown] = useState(false)
+  const choose = (i: number) => {
+    store('predictions', { ...load<Record<string, number>>('predictions', {}), [lesson.id]: i })
+    setMade(i)
+    onCommit()
+  }
+  return (
+    <div className="predict" aria-label="Prediction">
+      <div className="eyebrow plain">
+        <Lightbulb size={14} /> Predict first
+      </div>
+      <p className="predict-q">{p.question}</p>
+      {made === undefined ? (
+        <>
+          <div className="answers compact">
+            {p.options.map((o, i) => (
+              <button key={o} onClick={() => choose(i)}>
+                <span>{String.fromCharCode(65 + i)}</span>
+                {o}
+              </button>
+            ))}
+          </div>
+          {!committed && (
+            <button className="btn ghost small" onClick={onCommit}>
+              Skip prediction
+            </button>
+          )}
+        </>
+      ) : !shown ? (
+        <div className="predict-made">
+          <span>
+            Your prediction: <b>{p.options[made]}</b>. Run the experiment below, then compare.
+          </span>
+          <button className="btn small" onClick={() => setShown(true)}>
+            <Eye size={14} /> Show what happened
+          </button>
+        </div>
+      ) : (
+        <div className={'feedback ' + (made === p.answer ? '' : 'retry')} role="status">
+          {made === p.answer ? <CheckCircle2 size={20} /> : <CircleAlert size={20} />}
+          <div>
+            <b>{made === p.answer ? 'Your prediction held' : `You predicted: ${p.options[made]}`}</b>
+            <p>{p.reveal}</p>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function LessonView({ lesson, done, passed, onComplete, onPass }: { lesson: LessonType; done: boolean; passed: boolean; onComplete: () => void; onPass: () => void }) {
   const [pane, setPane] = useState<Pane>('Guide')
   const [choice, setChoice] = useState<number | null>(null)
   const [checked, setChecked] = useState(false)
+  // Experiment tools open once the learner has predicted (now or on an earlier visit) or chosen to skip.
+  const [committed, setCommitted] = useState(() => !lesson.predict || load<Record<string, number>>('predictions', {})[lesson.id] !== undefined)
   const module = moduleOf(lesson.id)
   const last = practicalLesson(module) === lesson
   const correct = checked && choice === lesson.correct
@@ -151,11 +207,14 @@ export function LessonView({ lesson, done, passed, onComplete, onPass }: { lesso
         </div>
       )}
       <div className="pane" hidden={pane !== 'Experiment'}>
-        {lesson.tools
-          .filter((t) => t !== 'lead')
-          .map((t) => (
-            <ToolView key={t} tool={t} highRange={lesson.tools.includes('stim')} />
-          ))}
+        {lesson.predict && <PredictCard lesson={lesson} committed={committed} onCommit={() => setCommitted(true)} />}
+        <div hidden={!committed}>
+          {lesson.tools
+            .filter((t) => t !== 'lead')
+            .map((t) => (
+              <ToolView key={t} tool={t} highRange={lesson.tools.includes('stim')} />
+            ))}
+        </div>
         {lesson.tools.includes('lead') && (
           <p className="note">Use the brain model above: switch to Target view to see the contacts inside the STN, and reveal the beta region when you are ready to check.</p>
         )}

@@ -75,10 +75,28 @@ test('stimulation and burst tools render, and the narrow layout does not scroll 
 test('adaptive DBS follows sensed beta and reports its energy use', async ({ page }) => {
   await page.goto('./#/lesson/close-the-loop')
   await page.getByRole('tab', { name: 'Experiment' }).click()
+  // The tools open once the learner commits to a prediction.
+  await expect(page.getByRole('switch', { name: 'Adaptive stimulation' })).toBeHidden()
+  await page.getByRole('button', { name: 'Less', exact: false }).first().click()
   await page.getByRole('switch', { name: 'Adaptive stimulation' }).check()
   await expect(page.locator('.patient .status-chip.stim')).toContainText('Adaptive · up to 3 mA')
   await page.getByRole('slider', { name: 'Threshold' }).fill('0.2')
   await expect(page.locator('.metric.stim').first()).toContainText(/[1-3]\.\d\d/, { timeout: 15_000 })
+  await page.getByRole('button', { name: 'Show what happened' }).click()
+  await expect(page.getByText('Your prediction held')).toBeVisible()
+})
+
+test('a learner can skip a prediction, and a made prediction is remembered', async ({ page }) => {
+  await page.goto('./#/lesson/stim-beta')
+  await page.getByRole('tab', { name: 'Experiment' }).click()
+  await page.getByRole('button', { name: 'Skip prediction' }).click()
+  await expect(page.getByRole('switch', { name: 'Stimulation on' })).toBeVisible()
+  await page.getByRole('button', { name: /It will rise/ }).click()
+  await page.reload()
+  await page.getByRole('tab', { name: 'Experiment' }).click()
+  await expect(page.getByText(/Your prediction: It will rise/)).toBeVisible()
+  await page.getByRole('button', { name: 'Show what happened' }).click()
+  await expect(page.getByText('You predicted: It will rise')).toBeVisible()
 })
 
 test('a monopolar review records thresholds and shows side effects as the amplitude rises', async ({ page }) => {
