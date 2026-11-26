@@ -196,6 +196,13 @@ export class BrainScene {
   private tween: { from: [THREE.Vector3, THREE.Vector3]; to: [THREE.Vector3, THREE.Vector3]; start: number } | null = null
   private clock = new THREE.Clock()
   private frame = 0
+  private dirty = true
+  private lastRender = 0
+  private lastTick = 0
+  /** Smoothed interval between animation frames: the page's real responsiveness. */
+  private gap = 16
+  private slowSince = 0
+  private reduced = false
   private visible = true
   private observer: IntersectionObserver
   private resizer: ResizeObserver
@@ -208,7 +215,7 @@ export class BrainScene {
 
   constructor(private host: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' })
-    this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1))
+    this.renderer.setPixelRatio(Math.min(1.75, window.devicePixelRatio || 1))
     this.renderer.setClearColor(0x000000, 0)
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping
@@ -235,6 +242,7 @@ export class BrainScene {
     this.controls.rotateSpeed = 0.7
     this.controls.zoomSpeed = 0.8
     this.controls.addEventListener('start', () => (this.tween = null))
+    this.controls.addEventListener('change', () => (this.dirty = true))
     this.buildNuclei()
     this.resizer = new ResizeObserver(() => this.resize())
     this.resizer.observe(host)
@@ -294,6 +302,7 @@ export class BrainScene {
       this.brain.add(mesh)
     }
     if (this.state) this.update(this.state, true)
+    this.dirty = true
     this.onReady()
   }
 
@@ -388,6 +397,7 @@ export class BrainScene {
   }
 
   update(state: SceneState, force = false) {
+    this.dirty = true
     const previous = this.state
     this.state = state
     this.root.updateMatrixWorld()
@@ -539,39 +549,73 @@ export class BrainScene {
     this.renderer.setSize(w, h, false)
     this.camera.aspect = w / h
     this.camera.updateProjectionMatrix()
+    this.dirty = true
   }
 
+  /**
+   * Render on demand. Camera motion renders at up to 30 fps; the live STN glow and the
+   * stimulation pulse refresh at about 12 fps; an unchanged scene is not redrawn.
+   * This keeps the main thread free for the recording on slow machines.
+   */
   private loop = () => {
     this.frame = requestAnimationFrame(this.loop)
     if (!this.visible || document.hidden) return
+    const now = performance.now()
+    if (this.lastTick) this.gap += (Math.min(1000, now - this.lastTick) - this.gap) * 0.1
+    this.lastTick = now
+    // On a struggling machine, lower the render resolution once and space out decorative frames.
+    const struggling = this.gap > 45
+    if (struggling && !this.slowSince) this.slowSince = now
+    if (!struggling) this.slowSince = 0
+    if (!this.reduced && this.slowSince && now - this.slowSince > 1500) {
+      this.reduced = true
+      this.renderer.setPixelRatio(1)
+      this.resize()
+    }
+    const since = now - this.lastRender
+    if (since < 1000 / 30) return
     const t = this.clock.getElapsedTime()
+    let moving = false
     if (this.tween) {
-      const u = Math.min(1, (performance.now() - this.tween.start) / 750),
+      const u = Math.min(1, (now - this.tween.start) / 750),
         e = u < 0.5 ? 4 * u * u * u : 1 - (-2 * u + 2) ** 3 / 2
       this.camera.position.lerpVectors(this.tween.from[0], this.tween.to[0], e)
       this.controls.target.lerpVectors(this.tween.from[1], this.tween.to[1], e)
       if (u >= 1) this.tween = null
+      moving = true
     }
-    this.controls.update()
-    const live = this.live()
-    for (const side of SIDES) {
-      const stn = this.nuclei.get(side + 'stn')!
-      const level = Math.min(1.2, live.beta[side] / 1.1)
-      stn.material.uniforms.glow.value += (level - stn.material.uniforms.glow.value) * 0.25
-      const lead = this.leads[side],
-        mA = live.stim[side],
-        k = this.state?.stimContact?.[side]
-      if (lead) {
-        lead.vta.visible = mA > 0.02 && k !== undefined && k !== null
-        if (lead.vta.visible) {
-          const r = activationRadius(mA)
-          lead.vta.scale.setScalar(r)
+    if (this.controls.update()) moving = true
+    // Decorative refresh (beta glow, stimulation pulse): ~12 fps normally, ~3 fps when the page is struggling.
+    const slow = since >= (struggling ? Math.max(330, 4 * this.gap) : 1000 / 12)
+    let animated = false
+    if (slow || moving || this.dirty) {
+      const live = this.live()
+      for (const side of SIDES) {
+        const stn = this.nuclei.get(side + 'stn')!
+        const level = Math.min(1.2, live.beta[side] / 1.1)
+        const glow = stn.material.uniforms.glow
+        const next = glow.value + (level - glow.value) * 0.45
+        if (Math.abs(next - glow.value) > 0.003) animated = true
+        glow.value = next
+        const lead = this.leads[side],
+          mA = live.stim[side],
+          k = this.state?.stimContact?.[side]
+        if (!lead) continue
+        const show = mA > 0.02 && k !== undefined && k !== null
+        if (show !== lead.vta.visible) animated = true
+        lead.vta.visible = show
+        if (show) {
+          lead.vta.scale.setScalar(activationRadius(mA))
           lead.vta.position.set(...lead.geometry.contacts[k!])
           lead.vta.material.uniforms.time.value = t
           lead.vta.material.uniforms.strength.value = Math.min(1, mA / 1.5)
+          animated = true
         }
       }
     }
+    if (!(moving || this.dirty || (slow && animated))) return
+    this.dirty = false
+    this.lastRender = now
     this.renderer.render(this.scene, this.camera)
     this.positionLabels()
   }

@@ -27,7 +27,9 @@ function heartRate(l: ReturnType<typeof useLab>) {
 export function PatientBar() {
   const l = useLab()
   useTick(l.signals, 500)
-  const now = l.signals.configAt(l.signals.end - 1)
+  // Settings the learner chose show immediately; movement can also change from the cued task, so it follows the recording.
+  const delivered = l.signals.configAt(l.signals.end - 1)
+  const now = { ...l.config, movement: delivered.movement }
   const bpm = heartRate(l)
   return (
     <section className="patient" aria-label="Virtual patient">

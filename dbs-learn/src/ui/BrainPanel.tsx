@@ -96,7 +96,7 @@ export function BrainPanel() {
     })
   })
 
-  const stim = delivered.stim
+  const stim = l.config.stim
   const sensing = focus ? focus.name : '—'
   const usable = webgl && !failed
   return (
