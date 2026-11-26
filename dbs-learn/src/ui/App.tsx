@@ -132,7 +132,7 @@ function CourseMap({ done, passed, resume }: { done: string[]; passed: string[];
   )
 }
 
-const allTools: Tool[] = ['spectrum', 'adaptive', 'review', 'bursts', 'stim', 'movement', 'sensing']
+const allTools: Tool[] = ['spectrum', 'adaptive', 'review', 'chronic', 'bursts', 'stim', 'movement', 'sensing']
 
 function Workspace() {
   const l = useLab()

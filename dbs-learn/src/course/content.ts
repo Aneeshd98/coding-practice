@@ -1,4 +1,4 @@
-export type Tool = 'lead' | 'sensing' | 'spectrum' | 'bursts' | 'movement' | 'stim' | 'adaptive' | 'review'
+export type Tool = 'lead' | 'sensing' | 'spectrum' | 'bursts' | 'movement' | 'stim' | 'adaptive' | 'review' | 'chronic'
 export type ModuleId = 'sensing' | 'beta' | 'bursts' | 'stim' | 'programming' | 'adaptive'
 
 export interface Reading {
@@ -205,6 +205,27 @@ export const modules: CourseModule[] = [
         feedback: 'Dyskinesia-related gamma tends to lock to half the stimulation frequency. The 130 Hz artifact aliases to 120 Hz at 250 Hz sampling, not to 65 Hz.',
         hint: 'Compute 130 ÷ 2, and separately where 130 Hz aliases at 250 Hz sampling.',
         sources: [pubmed('Gamma oscillations in the hyperkinetic state detected with chronic human brain recordings in Parkinson’s disease'), read.kuhn2006],
+      },
+      {
+        id: 'daily-beta',
+        title: 'Beta across the day',
+        intro: 'Sensing implants log beta power every few minutes for weeks. Read a day of it.',
+        explain: [
+          'Chronic sensing records average power in a narrow band around the patient’s beta peak at regular intervals, often every 10 minutes. Plotted over a day, it shows how symptoms and treatment interact outside the clinic.',
+          'Beta dips after each levodopa dose and rises again as the dose wears off. It is also lower during sleep. Moving or adding doses changes how long beta stays high (under-treated) and can introduce periods of peak-dose gamma (over-treated). Real logs are noisier and also reflect activity, posture and artifacts.',
+        ],
+        steps: [
+          'Open the chronic timeline. Find the rise in beta before each dose: that is wearing off.',
+          'Remove the 15:00 dose and compare the hours of high beta.',
+          'Add doses until high-beta time is short, and watch for dyskinesia-related gamma at peak dose.',
+        ],
+        tools: ['chronic'],
+        task: 'On a 10-minute beta log, beta climbs steadily during the hour before each scheduled dose and falls within an hour of taking it. What does this pattern most likely show?',
+        options: ['Wearing off between doses', 'Sleep', 'Stimulation artifact'],
+        correct: 0,
+        feedback: 'Beta rising as the previous dose fades, and falling once the next takes effect, is the signature of wearing off.',
+        hint: 'Relate the timing of the rise and fall to the dose times.',
+        sources: [read.percept, read.neumann, read.kuhn2006],
       },
     ],
   },

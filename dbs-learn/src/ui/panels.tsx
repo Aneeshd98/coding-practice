@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { AudioWaveform, Camera, Gauge, Hand, HeartPulse, Minus, Plus, SlidersVertical, Pill, RefreshCw, Sparkles, Timer, UserRound, Waves, Zap } from 'lucide-react'
+import { AudioWaveform, CalendarClock, Camera, Gauge, X, Hand, HeartPulse, Minus, Plus, SlidersVertical, Pill, RefreshCw, Sparkles, Timer, UserRound, Waves, Zap } from 'lucide-react'
 import { useLab, useTick } from '../app/lab'
 import { FS, LANE, SIDES, type Movement } from '../sim/model'
 import { rowNamed } from '../dsp/store'
@@ -7,6 +7,7 @@ import { BETA, bandPower, peak, prominent, welch } from '../dsp/spectrum'
 import { analyzeBursts } from '../dsp/bursts'
 import { POST_S, PRE_S, movementCourse } from '../dsp/movement'
 import { TEST_MAX, response } from '../sim/field'
+import { SLEEP, chronicDay, summarise } from '../sim/chronic'
 import { ADAPTIVE_BETA, ADAPTIVE_ENERGY, betaPower, captureBursts, meanDelivered } from '../course/practicals'
 import { Chart } from './Chart'
 
@@ -719,6 +720,99 @@ export function ReviewPanel() {
         <p className="note">
           Benefit means at least 50% rigidity relief. Testing stops at {TEST_MAX} mA. Use the brain model in Target view to see the field and any pathway it reaches. Teaching model only: thresholds come from a schematic field, not a validated volume-of-tissue-activated model.
         </p>
+      </div>
+    </div>
+  )
+}
+
+const hh = (h: number) => `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`
+
+export function ChronicPanel() {
+  const l = useLab()
+  const [doses, setDoses] = useState<number[]>([7, 11, 15, 19])
+  const [next, setNext] = useState(13)
+  const day = useMemo(() => (l.subject ? chronicDay(l.subject, 'L', doses) : []), [l.subject, doses])
+  if (!day.length) return null
+  const sum = summarise(day)
+  return (
+    <div className="tool">
+      <ToolHead icon={<CalendarClock size={15} />} tone="beta" title="Chronic timeline · left STN">
+        <div className="seg" role="group" aria-label="Dosing presets">
+          {(
+            [
+              ['3 doses', [7, 13, 19]],
+              ['4 doses', [7, 11, 15, 19]],
+              ['5 doses', [7, 10, 13, 16, 19]],
+            ] as [string, number[]][]
+          ).map(([label, d]) => (
+            <button key={label} aria-pressed={d.join() === doses.join()} onClick={() => setDoses(d)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </ToolHead>
+      <div className="tool-body">
+        <div className="captures" style={{ marginTop: 0 }}>
+          {doses.map((d) => (
+            <span key={d} className="capture has">
+              Levodopa <b>{hh(d)}</b>
+              <button className="icon-btn" style={{ width: 22, height: 22 }} aria-label={`Remove the ${hh(d)} dose`} onClick={() => setDoses(doses.filter((x) => x !== d))}>
+                <X size={13} />
+              </button>
+            </span>
+          ))}
+          <label className="select">
+            <select aria-label="New dose time" value={next} onChange={(e) => setNext(+e.target.value)}>
+              {Array.from({ length: 33 }, (_, i) => 6 + i * 0.5).map((h) => (
+                <option key={h} value={h}>
+                  {hh(h)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button className="btn" disabled={doses.includes(next)} onClick={() => setDoses([...doses, next].sort((a, b) => a - b))}>
+            Add dose
+          </button>
+        </div>
+        <Chart
+          series={[
+            { name: 'beta power (logged every 10 min)', y: day.map((p) => p.beta), color: color.beta, width: 2, fill: true },
+            { name: 'gamma (peak dose)', y: day.map((p) => p.gamma * 0.5), color: color.primary, width: 1.5 },
+          ]}
+          x0={0}
+          x1={24}
+          yRange={[0, 1.15]}
+          bands={[
+            { from: 0, to: SLEEP[1], color: 'color-mix(in srgb, var(--muted) 10%, transparent)', label: 'sleep', labelColor: 'var(--muted)' },
+            { from: SLEEP[0], to: 24, color: 'color-mix(in srgb, var(--muted) 10%, transparent)' },
+          ]}
+          vlines={doses.map((d) => ({ at: d, label: 'dose' }))}
+          xLabel="Hour of the day"
+          yLabel="Relative to untreated daytime beta"
+          height={200}
+          unit="h"
+        />
+        <div className="metrics">
+          <div className="metric beta">
+            <small>Waking hours with high beta</small>
+            <b>
+              {sum.offHours.toFixed(1)}
+              <em>h · under-treated</em>
+            </b>
+          </div>
+          <div className="metric">
+            <small>Waking hours with gamma</small>
+            <b>
+              {sum.dyskinesiaHours.toFixed(1)}
+              <em>h · dyskinesia-prone</em>
+            </b>
+          </div>
+          <div className="metric">
+            <small>Doses</small>
+            <b>{doses.length}</b>
+          </div>
+        </div>
+        <p className="note">High beta: above 75% of the untreated daytime level while awake. Each dose takes effect in about 30 minutes, peaks near 1 hour and wanes over about 3 hours. Teaching model, not dosing advice.</p>
       </div>
     </div>
   )

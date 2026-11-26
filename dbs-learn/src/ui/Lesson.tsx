@@ -3,7 +3,7 @@ import { ArrowRight, BookOpen, Check, CheckCircle2, CircleAlert, ClipboardCheck,
 import { useLab } from '../app/lab'
 import { lessons, moduleOf, modules, practicalLesson, type Lesson as LessonType, type Tool } from '../course/content'
 import { exercises, grade } from '../course/practicals'
-import { AdaptivePanel, BurstPanel, ReviewPanel, MovementPanel, SensingPanel, SpectrumPanel, StimPanel } from './panels'
+import { AdaptivePanel, BurstPanel, ChronicPanel, ReviewPanel, MovementPanel, SensingPanel, SpectrumPanel, StimPanel } from './panels'
 
 type Pane = 'Guide' | 'Experiment' | 'Checkpoint'
 
@@ -25,6 +25,8 @@ export function ToolView({ tool, highRange = false }: { tool: Tool; highRange?: 
       return <AdaptivePanel />
     case 'review':
       return <ReviewPanel />
+    case 'chronic':
+      return <ChronicPanel />
   }
 }
 
