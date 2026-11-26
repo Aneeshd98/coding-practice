@@ -1823,3 +1823,179 @@ details.reading ul {
   padding: 0 11px;
   font-size: 13px;
 }
+
+/* Patient assessment */
+.assessment {
+  grid-template-columns: minmax(0, 1fr) 360px;
+}
+.assess-tools .tool + .tool {
+  margin-top: 16px;
+}
+.case-card {
+  position: sticky;
+  top: 84px;
+}
+.case-steps {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 0;
+  padding: 12px 16px 0;
+}
+.case-steps li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+  padding: 6px 8px;
+  border-radius: 9px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+}
+.case-steps li span {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: var(--line-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+.case-steps li.current {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--line));
+  background: var(--select);
+}
+.case-steps li.current span {
+  background: var(--primary);
+  color: #fff;
+}
+.case-steps li.passed {
+  color: var(--ok);
+}
+.case-steps li.passed span {
+  background: var(--ok-soft);
+}
+.case-steps li.failed {
+  color: var(--stim);
+}
+.case-steps li.failed span {
+  background: var(--stim-soft);
+}
+.case-body {
+  display: grid;
+  gap: 14px;
+  padding: 14px 16px 18px;
+}
+.case-body fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.case-body legend {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink);
+  padding: 0;
+  margin-bottom: 8px;
+}
+.case-body .answers.compact {
+  margin: 0;
+}
+.case-body .feedback {
+  margin: 0;
+}
+.case-body > .btn {
+  justify-self: start;
+}
+.peak-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--muted);
+}
+.peak-input input {
+  width: 110px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 15px;
+}
+.results {
+  display: grid;
+  gap: 8px;
+}
+.result-row {
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--stim);
+}
+.result-row.ok {
+  color: var(--ok);
+}
+.result-row svg {
+  margin-top: 1px;
+}
+.result-row b {
+  display: block;
+  color: var(--ink);
+  font-weight: 600;
+}
+.result-row span {
+  color: var(--ink-2);
+}
+.case-detail summary {
+  cursor: pointer;
+  font-size: 13.5px;
+  color: var(--ink-2);
+  margin-bottom: 8px;
+}
+.assess-status {
+  display: grid;
+  grid-template-columns: 18px 1fr 16px;
+  align-items: center;
+  gap: 10px;
+  margin: 14px 0;
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line-2);
+  background: var(--surface-2);
+  color: var(--primary);
+  text-decoration: none;
+}
+.assess-status b {
+  display: block;
+  color: var(--ink);
+  font-size: 13.5px;
+}
+.assess-status small {
+  color: var(--muted);
+  font-size: 12px;
+}
+@media (max-width: 1100px) {
+  .assessment {
+    grid-template-columns: 1fr;
+  }
+  .case-card {
+    position: static;
+    order: -1;
+  }
+}
+select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

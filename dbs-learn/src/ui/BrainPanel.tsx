@@ -185,9 +185,11 @@ export function BrainPanel() {
                 <button className="chip-btn" aria-pressed={showLabels} onClick={() => setShowLabels(!showLabels)}>
                   <Tag size={12} /> Labels
                 </button>
-                <button className="chip-btn beta" aria-pressed={l.revealed} onClick={() => l.setRevealed(!l.revealed)}>
-                  {l.revealed ? <EyeOff size={12} /> : <Eye size={12} />} {l.revealed ? 'Hide' : 'Reveal'} β region
-                </button>
+                {!l.exam && (
+                  <button className="chip-btn beta" aria-pressed={l.revealed} onClick={() => l.setRevealed(!l.revealed)}>
+                    {l.revealed ? <EyeOff size={12} /> : <Eye size={12} />} {l.revealed ? 'Hide' : 'Reveal'} β region
+                  </button>
+                )}
               </div>
             </div>
             {loading && <div className="vp-status">Loading anatomy…</div>}

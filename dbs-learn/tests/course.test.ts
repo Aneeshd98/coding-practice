@@ -138,3 +138,31 @@ test('every wrong option explains why it is wrong', () => {
     l.why.forEach((w, i) => assert.equal(w === '', i === l.correct, `${l.id} option ${i}`))
   }
 })
+
+test('assessment truth matches what the recording shows, and boundary cases accept both answers', async () => {
+  const { truthFor, gradeCase, caseSeed, PAIRS } = await import('../src/course/assessment')
+  const { segmentBeta } = await import('../src/dsp/directional')
+  const { SEGMENTS } = await import('../src/sim/model')
+  const { BETA, bandPower, peak, welch } = await import('../src/dsp/spectrum')
+  for (let i = 0; i < 6; i++) {
+    const seed = caseSeed(i, i % 3)
+    const truth = truthFor(seed)
+    // What a learner would measure: adjacent-pair beta, the peak on L 0–2, and directional beta.
+    const g = new Generator(seed)
+    const store = new SignalStore(120)
+    g.configure({ lead: 'directional' })
+    store.ingest(0, g.block(10 * FS), [], g.states)
+    g.states = []
+    store.ingest(g.sample, g.block(20 * FS))
+    const power = PAIRS.map((p) => bandPower(welch(store.series(store.end, 20 * FS, rowNamed('L ' + p)!)), BETA[0], BETA[1]))
+    const measuredPair = PAIRS[power.indexOf(Math.max(...power))]
+    assert.ok(truth.pairs.includes(measuredPair), `seed ${seed}: measured ${measuredPair}, accepted ${truth.pairs}`)
+    const measuredPeak = peak(welch(store.series(store.end, 20 * FS, rowNamed('L 0–2')!)), BETA[0], BETA[1]).hz
+    assert.ok(Math.abs(measuredPeak - truth.peak) <= 1.5, `seed ${seed}: peak ${measuredPeak.toFixed(1)} vs ${truth.peak}`)
+    const dir = segmentBeta(store, 'L', store.end - 8 * FS, store.end)
+    assert.ok(truth.segments.includes(SEGMENTS[dir.strongest]), `seed ${seed}: segment ${SEGMENTS[dir.strongest]} vs ${truth.segments}`)
+    const r = gradeCase(seed, { pair: measuredPair, peak: measuredPeak.toFixed(1), segment: SEGMENTS[dir.strongest] })
+    assert.ok(r.passed)
+  }
+  assert.equal(gradeCase(caseSeed(0, 0), { pair: '', peak: '', segment: '' }).passed, false)
+})

@@ -41,7 +41,7 @@ export function PatientBar() {
           <UserRound size={18} />
         </span>
         <span>
-          <b>Virtual patient #{l.seed}</b>
+          <b>{l.exam ? 'Assessment patient' : `Virtual patient #${l.seed}`}</b>
           <small>
             Bilateral {{ stn: 'STN', gpi: 'GPi', vim: 'VIM' }[TARGET_OF[l.config.disorder]]} · {l.config.lead === 'directional' ? 'directional' : '4-ring'} leads
           </small>
@@ -51,7 +51,7 @@ export function PatientBar() {
         <span className="control-label">
           <Stethoscope size={14} /> Condition
         </span>
-        <select aria-label="Condition" value={now.disorder} onChange={(e) => l.change({ disorder: e.target.value as Disorder }, 'Condition: ' + e.target.value)}>
+        <select aria-label="Condition" disabled={l.exam} value={now.disorder} onChange={(e) => l.change({ disorder: e.target.value as Disorder }, 'Condition: ' + e.target.value)}>
           {DISORDERS.map((d) => (
             <option key={d.id} value={d.id}>
               {d.label} · {d.target}
@@ -111,9 +111,11 @@ export function PatientBar() {
         </span>
       )}
       <span className="spacer" />
-      <button className="btn ghost" onClick={l.newPatient}>
-        <RefreshCw size={14} /> New patient
-      </button>
+      {!l.exam && (
+        <button className="btn ghost" onClick={l.newPatient}>
+          <RefreshCw size={14} /> New patient
+        </button>
+      )}
     </section>
   )
 }
@@ -1023,7 +1025,7 @@ export function DirectionalPanel() {
             </div>
             <p className="note">
               Wedges compare each segment with the average of its own level (dashed circle) over the last {DIRECTIONAL_SECONDS} s, so the heartbeat and far-field activity that all three share cancel. The line is the estimated beta direction
-              {l.revealed ? '; the dashed line is the true one.' : '. Reveal the β region to check it.'}
+              {l.revealed ? '; the dashed line is the true one.' : l.exam ? '.' : '. Reveal the β region to check it.'}
               {stimOn ? ' Stimulation is on: its artifact can distort segment recordings, so read direction with stimulation off.' : ''}
             </p>
           </>

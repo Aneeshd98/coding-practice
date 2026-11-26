@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
-import { ArrowRight, AudioWaveform, Cable, Gauge, Globe2, SlidersVertical, ChevronRight, CircleCheck, FlaskConical, GraduationCap, Layers3, PanelsTopLeft, Waves, Zap } from 'lucide-react'
+import { ArrowRight, AudioWaveform, Cable, ClipboardCheck, Gauge, Globe2, SlidersVertical, ChevronRight, CircleCheck, FlaskConical, GraduationCap, Layers3, PanelsTopLeft, Waves, Zap } from 'lucide-react'
 import { LabProvider, load, store, useLab } from '../app/lab'
 import { lessons, modules, moduleOf, type ModuleId, type Tool } from '../course/content'
 import { LessonView, ModuleOutline, ToolView } from './Lesson'
 import { BrainPanel } from './BrainPanel'
 import { PatientBar } from './panels'
+import { Assessment, loadAssessment } from './Assessment'
+import { CASES, passedAssessment } from '../course/assessment'
 import { Traces } from './Traces'
 
 const route = () => window.location.hash.replace(/^#\/?/, '').split('/')
@@ -123,12 +125,34 @@ function CourseMap({ done, passed, resume }: { done: string[]; passed: string[];
               </b>
             </div>
           </div>
+          <AssessmentStatus />
           <a className="btn primary" href={'#/lesson/' + resume} style={{ width: '100%', justifyContent: 'center' }}>
             {done.length === lessons.length ? 'Revisit lessons' : 'Resume learning'} <ArrowRight size={15} />
           </a>
         </aside>
       </div>
     </>
+  )
+}
+
+function AssessmentStatus() {
+  const a = loadAssessment()
+  const done = a.results.length >= CASES
+  return (
+    <a className="assess-status" href="#/assess">
+      <ClipboardCheck size={16} />
+      <span>
+        <b>Patient assessment</b>
+        <small>
+          {done
+            ? (passedAssessment(a) ? 'Passed' : 'Not passed') + ` · ${a.results.filter((r) => r.passed).length} of ${CASES} patients`
+            : a.results.length
+              ? `In progress · patient ${a.results.length + 1} of ${CASES}`
+              : 'Three unseen patients'}
+        </small>
+      </span>
+      <ChevronRight size={15} />
+    </a>
   )
 }
 
@@ -161,12 +185,12 @@ function Workspace() {
   useEffect(() => {
     // Each lesson declares its patient's condition; the course default is Parkinson's disease.
     // Wait for the patient: on first load the simulation starts after this effect and would reset it.
-    if (page !== 'lesson' || !l.subject) return
-    const wanted = lesson.disorder ?? 'pd'
+    if ((page !== 'lesson' && page !== 'assess') || !l.subject) return
+    const wanted = page === 'assess' ? 'pd' : (lesson.disorder ?? 'pd')
     if (l.config.disorder !== wanted) l.change({ disorder: wanted }, 'Condition for this lesson: ' + wanted)
   }, [page, lesson.id, l.subject])
   useEffect(() => {
-    document.title = (page === 'map' ? 'Course map' : page === 'lab' ? 'Free lab' : lesson.title) + ' · Subthalamic Lab'
+    document.title = (page === 'map' ? 'Course map' : page === 'lab' ? 'Free lab' : page === 'assess' ? 'Patient assessment' : lesson.title) + ' · Subthalamic Lab'
   }, [page, lesson])
   const add = (list: string[], set: (v: string[]) => void, key: string, id: string) => {
     if (list.includes(id)) return
@@ -178,6 +202,7 @@ function Workspace() {
     { id: 'lesson', label: 'Learning studio', icon: PanelsTopLeft, href: '#/lesson/' + lesson.id },
     { id: 'map', label: 'Course map', icon: Layers3, href: '#/map' },
     { id: 'lab', label: 'Free lab', icon: FlaskConical, href: '#/lab' },
+    { id: 'assess', label: 'Assessment', icon: ClipboardCheck, href: '#/assess' },
   ]
   return (
     <>
@@ -211,6 +236,18 @@ function Workspace() {
       <main>
         {page === 'map' ? (
           <CourseMap done={done} passed={passed} resume={resume} />
+        ) : page === 'assess' ? (
+          <>
+            <div className="hero">
+              <div>
+                <div className="eyebrow">Check your skills</div>
+                <h1>Patient assessment</h1>
+                <p>Three virtual patients you have not met. Find each one’s beta contacts, peak frequency and beta direction from the recording alone. Answers are graded against the simulator’s hidden truth.</p>
+              </div>
+            </div>
+            <Instrument />
+            <Assessment />
+          </>
         ) : page === 'lab' ? (
           <>
             <div className="hero">

@@ -24,6 +24,9 @@ function useController() {
   const worker = useRef<Worker | null>(null)
   const [config, setConfig] = useState<Config>(INITIAL)
   const [seed, setSeed] = useState(() => load('seed', 7))
+  // An assessment patient replaces the lesson patient while the assessment page is open, without being saved.
+  const [examSeed, setExamSeed] = useState<number | null>(null)
+  const active = examSeed ?? seed
   const [subject, setSubject] = useState<Subject | null>(null)
   const [ready, setReady] = useState(false)
   const [paused, setPaused] = useState(false)
@@ -48,14 +51,14 @@ function useController() {
       } else if (m.type === 'subject') setSubject(m.subject)
       else if (m.type === 'protocol') setProtocol(m.status)
     }
-    w.postMessage({ type: 'init', seed })
+    w.postMessage({ type: 'init', seed: active })
     setConfig(INITIAL)
     setCaptures({})
     setReview({})
     setRevealed(false)
     setFrozen(null)
     return () => w.terminate()
-  }, [signals, seed])
+  }, [signals, active])
 
   // Segment channels exist only on a directional lead (a new patient starts with ring contacts).
   useEffect(() => {
@@ -94,7 +97,10 @@ function useController() {
     config,
     change,
     subject,
-    seed,
+    seed: active,
+    /** True while an assessment patient is loaded: the β region cannot be revealed. */
+    exam: examSeed !== null,
+    setExamSeed,
     newPatient: () => {
       const next = seed + 1
       store('seed', next)
