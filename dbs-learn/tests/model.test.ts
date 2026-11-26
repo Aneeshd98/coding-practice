@@ -230,3 +230,18 @@ test('the adaptive controller ramps with sensed beta and saves energy against co
   // A sensing band far from the peak barely triggers.
   assert.ok(mean(adaptive({ threshold: 0.7, centre: 32 }), LANE.stimL) < mean(tuned, LANE.stimL) / 2)
 })
+
+test('dyskinesia gamma appears only with levodopa ON and entrains to half the stimulation frequency', async () => {
+  const { prominent } = await import('../src/dsp/spectrum')
+  const gammaPeak = (patch: ConfigPatch) => {
+    const sp = welch(series(record(patch).store, 'L 0–2'))
+    const p = peak(sp, 55, 95)
+    return { hz: p.hz, clear: prominent(sp, p, 40, 100, 4) }
+  }
+  assert.equal(gammaPeak({ dyskinesia: true }).clear, false, 'not without levodopa')
+  assert.equal(gammaPeak({ medication: 'on' }).clear, false, 'not without dyskinesia')
+  const free = gammaPeak({ medication: 'on', dyskinesia: true })
+  assert.ok(free.clear && Math.abs(free.hz - makeSubject(7).gammaHz.L) < 1.5, String(free.hz))
+  const locked = gammaPeak({ medication: 'on', dyskinesia: true, stim: { on: true, contact: { L: 1 }, amplitude: 2 } })
+  assert.ok(locked.clear && Math.abs(locked.hz - 65) < 0.8, String(locked.hz))
+})

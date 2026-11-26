@@ -73,6 +73,14 @@ export function PatientBar() {
           ))}
         </div>
       </div>
+      <button
+        className={'status-chip toggle' + (now.dyskinesia ? ' on' : '')}
+        aria-pressed={now.dyskinesia}
+        title="Peak-dose dyskinesia, expressed while levodopa is ON"
+        onClick={() => l.change({ dyskinesia: !now.dyskinesia }, 'Dyskinesia ' + (now.dyskinesia ? 'off' : 'on'))}
+      >
+        Dyskinesia {now.dyskinesia ? (now.medication === 'on' ? 'on' : 'on · needs levodopa') : 'off'}
+      </button>
       <span className={'status-chip' + (now.stim.on ? ' stim' : '')}>
         <Zap size={13} />
         {!now.stim.on ? 'Stimulation off' : now.adaptive.on ? `Adaptive · up to ${now.adaptive.max} mA` : `Stim ${now.stim.amplitude.toFixed(1)} mA · ${now.stim.frequency} Hz`}
@@ -170,6 +178,8 @@ export function SpectrumPanel({ upTo = 60 }: { upTo?: number }) {
   const markers = []
   if (ready && p.local) markers.push({ x: p.hz, y: p.value, label: `β peak ${p.hz.toFixed(1)} Hz`, color: color.beta })
   if (ready && max > 60 && alias.local) markers.push({ x: alias.hz, y: alias.value, label: `${alias.hz.toFixed(1)} Hz`, color: color.stim })
+  const gammaRaw = peak(sp, 55, 95)
+  if (ready && max > 60 && prominent(sp, gammaRaw, 40, 100, 4)) markers.push({ x: gammaRaw.hz, y: gammaRaw.value, label: `γ ${gammaRaw.hz.toFixed(1)} Hz`, color: color.primary })
   return (
     <div className="tool">
       <ToolHead icon={<AudioWaveform size={15} />} tone="beta" title={`Power spectrum · ${row.name}`}>

@@ -59,6 +59,8 @@ export interface Config {
   stim: StimSettings
   adaptive: AdaptiveSettings
   ecg: boolean
+  /** Peak-dose dyskinesia; only expressed while levodopa is ON. */
+  dyskinesia: boolean
 }
 export type ConfigPatch = Partial<Omit<Config, 'stim' | 'adaptive'>> & {
   stim?: Partial<Omit<StimSettings, 'contact'>> & { contact?: Partial<Record<Side, number>> }
@@ -70,6 +72,7 @@ export const INITIAL: Config = {
   stim: { on: false, contact: { L: 1, R: 1 }, amplitude: 2, frequency: 130, pulseWidth: 60 },
   adaptive: { on: false, centre: 20, threshold: 1.0, ramp: 6, smoothing: 0.25, min: 0, max: 3 },
   ecg: true,
+  dyskinesia: false,
 }
 export function applyPatch(config: Config, patch: ConfigPatch): Config {
   return {
@@ -101,6 +104,8 @@ export interface Subject {
   /** Height (mm above contact 0) of the dorsal edge of the beta-generating motor region. */
   border: Record<Side, number>
   gain: Record<Side, number>
+  /** Frequency of dyskinesia-related narrowband gamma (Hz). */
+  gammaHz: Record<Side, number>
 }
 
 export function randomGenerator(seed: number) {
@@ -118,11 +123,14 @@ export function makeSubject(seed: number): Subject {
   const side = () => ({ hz: Math.round((16 + 10 * r()) * 10) / 10, border: 1.3 + 3.4 * r(), gain: 0.8 + 0.4 * r() })
   const L = side(),
     R = side()
+  // Properties added later draw from their own stream so existing patients keep their values.
+  const extra = randomGenerator(seed ^ 0x6a33a)
   return {
     seed,
     betaHz: { L: L.hz, R: R.hz },
     border: { L: L.border, R: R.border },
     gain: { L: L.gain, R: R.gain },
+    gammaHz: { L: Math.round((66 + 16 * extra()) * 10) / 10, R: Math.round((66 + 16 * extra()) * 10) / 10 },
   }
 }
 
@@ -149,6 +157,8 @@ export class Generator {
   private length = [1, 1]
   private amp = [0, 0]
   private med: number
+  private dysk = 0
+  private gammaPhase = [0.3, 2.1]
   private moveF = [1, 1]
   private rebound = [0, 0]
   private stimF = [0, 0]
@@ -209,6 +219,7 @@ export class Generator {
         o = n * STRIDE
       // Levodopa effect compressed into seconds for teaching (time constant 4 s).
       this.med += ((cfg.medication === 'on' ? 1 : 0) - this.med) / (4 * FS)
+      this.dysk += ((cfg.dyskinesia ? this.med : 0) - this.dysk) / (2 * FS)
       this.beat += this.rate / FS
       if (this.beat >= 1) {
         this.beat -= 1
@@ -263,6 +274,11 @@ export class Generator {
         const level = sub.gain[side] * this.moveF[si] * (1 - 0.8 * sf) * lerp(1, 0.95, this.med)
         this.phase[si] += (TAU * (sub.betaHz[side] + 0.8 * Math.sin(0.27 * t + 1.3 * si))) / FS
         const beta = 3.6 * level * envelope * Math.sin(this.phase[si])
+        // Narrowband gamma with dyskinesia; under stimulation it entrains to half the stimulation frequency.
+        const half = cfg.stim.frequency / 2
+        const entrained = this.ramp[si] > 0.5 && half >= 55 && half <= 95
+        this.gammaPhase[si] += (TAU * (entrained ? half : sub.gammaHz[side] + 0.6 * Math.sin(0.19 * t + si))) / FS
+        const gamma = 1.6 * this.dysk * Math.sin(this.gammaPhase[si])
         const far = (this.shared[si] = 0.995 * this.shared[si] + 0.42 * this.gauss())
         const stimAmp = 250 * amp * this.ramp[si]
         const f = cfg.stim.frequency
@@ -273,7 +289,7 @@ export class Generator {
           const i = si * 4 + c
           const slow = (this.local[2 * i] = 0.97 * this.local[2 * i] + 0.2 * this.gauss())
           const fast = (this.local[2 * i + 1] = 0.5 * this.local[2 * i + 1] + 0.45 * this.gauss())
-          const neural = betaWeight(contactZ(c), border) * beta + far + slow + fast
+          const neural = betaWeight(contactZ(c), border) * (beta + gamma) + far + slow + fast
           // The implant case is the reference and sits in the chest, so the heart is a shared input.
           const cardiac = cfg.ecg ? ecg * 0.025 * (1 + 0.018 * c) * (si ? 0.8 : 1) : 0
           let artifact = 0

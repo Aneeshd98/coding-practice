@@ -18,6 +18,8 @@ export interface Lesson {
   feedback: string
   hint: string
   sources: Reading[]
+  /** The module practical sits on this lesson (default: the last). */
+  practical?: boolean
 }
 export interface CourseModule {
   id: ModuleId
@@ -177,6 +179,32 @@ export const modules: CourseModule[] = [
         feedback: 'A window that straddles the transition mixes OFF and ON activity and underestimates the change.',
         hint: 'What would a window that includes the transition contain?',
         sources: [read.kuhn2006, read.brown],
+        practical: true,
+      },
+      {
+        id: 'gamma-dyskinesia',
+        title: 'A second biomarker: gamma',
+        intro: 'Too much dopamine has its own signature: a narrow peak in the gamma range.',
+        explain: [
+          'When levodopa produces involuntary movements (peak-dose dyskinesia), chronic recordings from the STN and motor cortex have shown a narrow oscillation, usually between 60 and 90 Hz. Unlike beta, which tracks being under-treated, this gamma can indicate being over-treated.',
+          'During stimulation this gamma often locks to exactly half the stimulation frequency, for example 65 Hz at 130 Hz. A good sensing setup therefore has to tell an entrained brain rhythm from an artifact. A controller using both biomarkers could avoid stimulating too little or too much.',
+        ],
+        steps: [
+          'Switch levodopa ON and turn Dyskinesia on in the patient bar. Wait about 10 seconds.',
+          'Select L 0–2 and set the spectrum range to 1–125 Hz. Find the narrow gamma peak.',
+          'Turn stimulation on at contact 1, 130 Hz. Where does the gamma peak move?',
+        ],
+        tools: ['spectrum', 'stim'],
+        task: 'With dyskinesia and stimulation at 130 Hz, a narrow peak appears at exactly 65 Hz. What is the best interpretation?',
+        options: [
+          'Gamma entrained to half the stimulation frequency',
+          'The aliased stimulation artifact',
+          'A beta burst at a higher frequency',
+        ],
+        correct: 0,
+        feedback: 'Dyskinesia-related gamma tends to lock to half the stimulation frequency. The 130 Hz artifact aliases to 120 Hz at 250 Hz sampling, not to 65 Hz.',
+        hint: 'Compute 130 ÷ 2, and separately where 130 Hz aliases at 250 Hz sampling.',
+        sources: [pubmed('Gamma oscillations in the hyperkinetic state detected with chronic human brain recordings in Parkinson’s disease'), read.kuhn2006],
       },
     ],
   },
@@ -418,3 +446,4 @@ export const modules: CourseModule[] = [
 
 export const lessons = modules.flatMap((m) => m.lessons)
 export const moduleOf = (lessonId: string) => modules.find((m) => m.lessons.some((l) => l.id === lessonId))!
+export const practicalLesson = (m: CourseModule) => m.lessons.find((l) => l.practical) ?? m.lessons.at(-1)!

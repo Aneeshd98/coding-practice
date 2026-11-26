@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ArrowRight, BookOpen, Check, CheckCircle2, CircleAlert, ClipboardCheck, FlaskConical, GraduationCap, LayoutGrid, ListTree } from 'lucide-react'
 import { useLab } from '../app/lab'
-import { lessons, moduleOf, modules, type Lesson as LessonType, type Tool } from '../course/content'
+import { lessons, moduleOf, modules, practicalLesson, type Lesson as LessonType, type Tool } from '../course/content'
 import { exercises, grade } from '../course/practicals'
 import { AdaptivePanel, BurstPanel, ReviewPanel, MovementPanel, SensingPanel, SpectrumPanel, StimPanel } from './panels'
 
@@ -90,7 +90,7 @@ export function LessonView({ lesson, done, passed, onComplete, onPass }: { lesso
   const [choice, setChoice] = useState<number | null>(null)
   const [checked, setChecked] = useState(false)
   const module = moduleOf(lesson.id)
-  const last = module.lessons.at(-1) === lesson
+  const last = practicalLesson(module) === lesson
   const correct = checked && choice === lesson.correct
   const next = lessons[lessons.indexOf(lesson) + 1]
   const icons = { Guide: BookOpen, Experiment: FlaskConical, Checkpoint: GraduationCap }

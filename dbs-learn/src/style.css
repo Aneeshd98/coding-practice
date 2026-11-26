@@ -1647,3 +1647,15 @@ details.reading ul {
 .table tr.current td {
   background: var(--select);
 }
+
+.status-chip.toggle {
+  border: 0;
+  cursor: pointer;
+}
+.status-chip.toggle:hover {
+  color: var(--ink);
+}
+.status-chip.toggle.on {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
