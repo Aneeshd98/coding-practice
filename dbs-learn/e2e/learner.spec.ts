@@ -1,0 +1,59 @@
+import { test as base, expect } from '@playwright/test'
+
+const test = base.extend<{ errors: void }>({
+  errors: [
+    async ({ page }, use) => {
+      const issues: string[] = []
+      page.on('pageerror', (e) => issues.push(e.message))
+      page.on('console', (m) => m.type() === 'error' && issues.push(m.text()))
+      await use()
+      expect(issues).toEqual([])
+    },
+    { auto: true },
+  ],
+})
+
+test('a learner streams data, answers a checkpoint and completes the first lesson', async ({ page }) => {
+  await page.goto('./')
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Where the lead sits')
+  const clock = page.locator('.strip time')
+  const first = await clock.innerText()
+  await expect(clock).not.toHaveText(first)
+  await page.getByRole('tab', { name: 'Checkpoint' }).click()
+  await page.getByRole('button', { name: /Contact 3/ }).click()
+  await page.getByRole('button', { name: 'Check answer' }).click()
+  await expect(page.getByText('Take another look')).toBeVisible()
+  await page.getByRole('button', { name: /Contact 0/ }).click()
+  await page.getByRole('button', { name: 'Check answer' }).click()
+  await page.getByRole('button', { name: 'Complete lesson' }).click()
+  await page.getByRole('link', { name: 'Next lesson' }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Why record between contacts')
+  await page.reload()
+  await page.getByRole('link', { name: 'Course map' }).click()
+  await expect(page.getByText('1 of 10 lessons complete')).toBeVisible()
+})
+
+test('the sensing practical is graded from the live recording', async ({ page }) => {
+  await page.goto('./#/lesson/find-beta-contacts')
+  await page.getByRole('combobox', { name: 'Montage' }).selectOption('Adjacent pairs')
+  await page.getByRole('tab', { name: 'Checkpoint' }).click()
+  await page.getByRole('combobox', { name: /Which left adjacent pair/ }).selectOption('0–1')
+  await page.getByRole('button', { name: 'Verify practical' }).click()
+  await expect(page.locator('.practical .status')).toBeVisible()
+  await page.waitForTimeout(8500)
+  for (const pair of ['0–1', '1–2', '2–3']) {
+    await page.getByRole('combobox', { name: /Which left adjacent pair/ }).selectOption(pair)
+    await page.getByRole('button', { name: 'Verify practical' }).click()
+    if (await page.getByText('Module practical passed.').isVisible()) break
+  }
+  await expect(page.getByText('Module practical passed.')).toBeVisible()
+})
+
+test('stimulation and burst tools render, and the narrow layout does not scroll sideways', async ({ page }) => {
+  await page.goto('./#/lab')
+  await page.getByRole('checkbox', { name: /Stimulation on/ }).check()
+  await expect(page.locator('.lead .contact.stim')).toHaveCount(2)
+  await expect(page.getByRole('heading', { name: /Beta bursts/ })).toBeVisible()
+  await page.setViewportSize({ width: 375, height: 800 })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
+})
